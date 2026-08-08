@@ -62,7 +62,7 @@ e i ricordi in un unico posto.
 <button
 className={`card ${section.color}`}
 key={section.title}
- onClick={() => section.title === "Calendario" ? window.location.href = "/calendario" : alert(`${section.title}: sezione in costruzione 🌱`)}
+ onClick={() => section.title === "Calendario" ? window.location.href = "/calendario" : section.title === "Irrigazione" ? window.location.href = "/irrigazione" : section.title === "Le mie piante" ? window.location.href = "/piante" : alert(`${section.title}: sezione in costruzione 🌱`)}
 >
 <div className="cardIcon">{section.icon}</div>
 <div className="cardText">

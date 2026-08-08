@@ -45,6 +45,7 @@ category: "Fiorita",
 export default function PlantsPage() {
 return (
 <main style={{ padding: "32px", maxWidth: "1100px", margin: "0 auto" }}>
+      <Link href="/" style={{ textDecoration: "none", color: "#55745b", fontWeight: "600" }}>← Torna alla Home</Link>
 <h1>🌿 Le mie piante</h1>
 <p>Le piante del nostro terrazzo e le loro esigenze.</p>
 
