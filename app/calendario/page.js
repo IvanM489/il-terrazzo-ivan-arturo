@@ -162,6 +162,8 @@ export default function Calendario() {
                       >
                         {activity.type === "potata"
                           ? "✂️ Potata"
+                          : activity.type === "innaffiata"
+                          ? "💧 Innaffiata"
                           : "🌿 Concimata"}{" "}
                         {activity.plant}
                       </div>

@@ -10,9 +10,22 @@ export default function Irrigazione() {
  if (saved) setLastWatered(JSON.parse(saved));
  }, []);
  const annaffia = (name) => {
- const next = { ...lastWatered, [name]: new Date().toISOString() };
+ const date = new Date().toISOString();
+ const next = { ...lastWatered, [name]: date };
+
  setLastWatered(next);
  window.localStorage.setItem("lastWatered", JSON.stringify(next));
+
+ const savedActions = window.localStorage.getItem("plantActions");
+ const actions = savedActions ? JSON.parse(savedActions) : [];
+
+ actions.push({
+   date: date,
+   type: "innaffiata",
+   plant: name
+ });
+
+ window.localStorage.setItem("plantActions", JSON.stringify(actions));
  };
  return (
 <main style={{
@@ -83,7 +96,37 @@ marginBottom: "8px"
 {plant.water}
 </p>
 
-{lastWatered[plant.name] && (() => { const d = new Date(lastWatered[plant.name]); const oggi = new Date(); const giorni = Math.floor((new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000); return <p style={{fontSize:"14px",color:"#59645c",marginTop:"10px"}}>Ultima annaffiatura: {giorni === 0 ? "oggi" : giorni === 1 ? "ieri" : `${giorni} giorni fa`}</p>; })()}
+{lastWatered[plant.name] && (() => { const d = new Date(lastWatered[plant.name]); const oggi = new Date(); const giorni = Math.floor((new Date(oggi.getFullYear(), oggi.getMonth(), oggi.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000); return <p style={{fontSize:"14px",color:"#59645c",marginTop:"10px"}}>Ultima annaffiatura: {giorni === 0 ? "oggi" : giorni === 1 ? "ieri" : `${giorni} giorni fa`}
+<button
+  onClick={() => {
+    const next = { ...lastWatered };
+    delete next[plant.name];
+    setLastWatered(next);
+    localStorage.setItem("lastWatered", JSON.stringify(next));
+
+    const savedActions = localStorage.getItem("plantActions");
+    const actions = savedActions ? JSON.parse(savedActions) : [];
+
+    let removed = false;
+    const filtered = actions.filter((action) => {
+      if (
+        !removed &&
+        action.plant === plant.name &&
+        action.type === "innaffiata"
+      ) {
+        removed = true;
+        return false;
+      }
+      return true;
+    });
+
+    localStorage.setItem("plantActions", JSON.stringify(filtered));
+  }}
+  style={{ border: "none", background: "transparent", color: "#c62828", cursor: "pointer", fontSize: "18px", fontWeight: "700", padding: "0" }}
+  title="Cancella ultima annaffiatura"
+>
+  ✕
+</button></p>; })()}
 
 <button onClick={() => annaffia(plant.name)} style={{marginTop:"12px",padding:"10px 16px",border:"none",borderRadius:"12px",background:"#55745b",color:"white",cursor:"pointer"}}>💧 Annaffiata oggi</button>
 

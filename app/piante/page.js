@@ -58,7 +58,7 @@ marginTop: "28px",
 }}
 >
 {[...plants].sort((a, b) => a.name.localeCompare(b.name, "it")).map((plant) => (
-<Link href={`/pianta/${encodeURIComponent(plant.name)}`} style={{ textDecoration: "none", color: "inherit" }}><article
+<Link key={plant.name} href={`/pianta/${encodeURIComponent(plant.name)}`} style={{ textDecoration: "none", color: "inherit" }}><article
 key={plant.name}
 style={{
 padding: "24px",

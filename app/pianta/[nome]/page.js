@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { plants } from "../../../data/plants";
 
 export default function PlantPage() {
@@ -11,11 +11,26 @@ export default function PlantPage() {
 
   const plant = plants.find((p) => p.name === nome);
 
-  const [lastActions, setLastActions] = useState(() => {
-    if (typeof window === "undefined") return {};
+  const [lastActions, setLastActions] = useState({});
+
+  useEffect(() => {
     const saved = localStorage.getItem("plantActions");
-    return saved ? JSON.parse(saved) : {};
-  });
+    if (!saved) return;
+
+    const actions = JSON.parse(saved);
+
+    const plantActions = actions.filter(
+      (a) => a.plant === plant.name
+    );
+
+    const latest = {};
+
+    plantActions.forEach((action) => {
+      latest[action.type] = action.date;
+    });
+
+    setLastActions(latest);
+  }, [plant.name]);
 
   if (!plant) {
     return (
@@ -125,8 +140,26 @@ export default function PlantPage() {
           </button>
 
           {lastActions.concimata && (
-            <p style={{ fontSize: "14px", color: "#55745b" }}>
+            <p style={{ fontSize: "14px", color: "#55745b", display: "flex", alignItems: "center", gap: "8px" }}>
               Ultima concimazione: oggi
+              <button
+                onClick={() => {
+                  const saved = localStorage.getItem("plantActions");
+                  const actions = saved ? JSON.parse(saved) : [];
+                  const index = [...actions].reverse().findIndex(
+                    (a) => a.plant === plant.name && a.type === "concimata"
+                  );
+                  if (index !== -1) {
+                    actions.splice(actions.length - 1 - index, 1);
+                    localStorage.setItem("plantActions", JSON.stringify(actions));
+                  }
+                  setLastActions((prev) => ({ ...prev, concimata: null }));
+                }}
+                style={{ border: "none", background: "transparent", color: "#c62828", cursor: "pointer", fontSize: "18px", fontWeight: "700", padding: "0" }}
+                title="Cancella ultima concimazione"
+              >
+                ✕
+              </button>
             </p>
           )}
         </div>
@@ -143,8 +176,26 @@ export default function PlantPage() {
           </button>
 
           {lastActions.potata && (
-            <p style={{ fontSize: "14px", color: "#55745b" }}>
+            <p style={{ fontSize: "14px", color: "#55745b", display: "flex", alignItems: "center", gap: "8px" }}>
               Ultima potatura: oggi
+              <button
+                onClick={() => {
+                  const saved = localStorage.getItem("plantActions");
+                  const actions = saved ? JSON.parse(saved) : [];
+                  const index = [...actions].reverse().findIndex(
+                    (a) => a.plant === plant.name && a.type === "potata"
+                  );
+                  if (index !== -1) {
+                    actions.splice(actions.length - 1 - index, 1);
+                    localStorage.setItem("plantActions", JSON.stringify(actions));
+                  }
+                  setLastActions((prev) => ({ ...prev, potata: null }));
+                }}
+                style={{ border: "none", background: "transparent", color: "#c62828", cursor: "pointer", fontSize: "18px", fontWeight: "700", padding: "0" }}
+                title="Cancella ultima potatura"
+              >
+                ✕
+              </button>
             </p>
           )}
         </div>
