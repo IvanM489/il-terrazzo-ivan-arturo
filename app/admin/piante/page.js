@@ -546,20 +546,41 @@ export default function AdminPiantePage() {
           gap: 8px;
         }
 
-        .season {
-          border: 1px solid #d8e0d4;
-          background: white;
-          color: #55745b;
-          border-radius: 20px;
-          padding: 8px 11px;
+        .seasonButton {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          min-width: 105px;
+          border: 2px solid #c7d0c4;
+          background: #ffffff;
+          color: #354d3b;
+          border-radius: 12px;
+          padding: 11px 14px;
           cursor: pointer;
-          font-size: 13px;
+          font-size: 14px;
+          font-weight: 600;
+          transition: all 0.15s ease;
         }
 
-        .season.active {
-          background: #55745b;
+        .seasonButton:hover {
           border-color: #55745b;
-          color: white;
+          background: #f1f6ef;
+        }
+
+        .seasonButton.selected {
+          background: #55745b;
+          border: 3px solid #354d3b;
+          color: #ffffff;
+          font-weight: 800;
+          box-shadow: 0 4px 10px rgba(53, 77, 59, 0.28);
+        }
+
+        .seasonCheck {
+          width: 18px;
+          font-size: 17px;
+          font-weight: 900;
+          line-height: 1;
         }
 
         .primary {
@@ -736,25 +757,38 @@ function SeasonSelector({
   values,
   onToggle,
 }) {
+  const selected = Array.isArray(values)
+    ? values
+    : normalizeSeasons(values);
+
   return (
     <div className="seasonBox">
       <h3>{title}</h3>
 
       <div className="seasons">
-        {seasons.map((season) => (
-          <button
-            type="button"
-            key={season}
-            className={`season ${
-              values.includes(season)
-                ? "active"
-                : ""
-            }`}
-            onClick={() => onToggle(season)}
-          >
-            {season}
-          </button>
-        ))}
+        {seasons.map((season) => {
+          const active = selected.includes(season);
+
+          return (
+            <button
+              type="button"
+              key={season}
+              className={`seasonButton ${
+                active ? "selected" : ""
+              }`}
+              aria-pressed={active}
+              onClick={() => onToggle(season)}
+            >
+              <span className="seasonCheck">
+                {active ? "✓" : "○"}
+              </span>
+
+              <span>
+                {season}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
