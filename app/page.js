@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "../lib/supabase/client";
-import { plants } from "../data/plants";
 
 const sections = [
   {
@@ -54,6 +53,7 @@ export default function Home() {
   const [showTasks, setShowTasks] = useState(true);
   const [completedTasks, setCompletedTasks] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [allPlants, setAllPlants] = useState([]);
   const [loadingUser, setLoadingUser] = useState(true);
 
   const oggi = new Date();
@@ -70,48 +70,88 @@ export default function Home() {
 
   const periodoPotatura =
     mese === 1 ? "fine inverno" : stagione;
+  useEffect(() => {
+    async function loadPlantsForTasks() {
+      try {
+        const response = await fetch("/api/home/plants", {
+          cache: "no-store",
+        });
 
-  const tasks = plants.flatMap((plant) => {
-    const plantTasks = [];
+        if (!response.ok) {
+          setAllPlants([]);
+          return;
+        }
+
+        const result = await response.json();
+
+        setAllPlants(result.plants || []);
+      } catch {
+        setAllPlants([]);
+      }
+    }
+
+    loadPlantsForTasks();
+  }, []);
+
+  const tasks = allPlants.flatMap((plant) => {
+    const result = [];
+
+    const pruningSeasons = Array.isArray(plant.pruningSeason)
+      ? plant.pruningSeason
+      : [];
+
+    const fertilizerSeasons = Array.isArray(plant.fertilizerSeason)
+      ? plant.fertilizerSeason
+      : [];
 
     if (
-      plant.pruningSeason?.includes(stagione) ||
-      plant.pruningSeason?.includes(periodoPotatura)
+      pruningSeasons.includes(stagione) ||
+      pruningSeasons.includes(periodoPotatura)
     ) {
-      plantTasks.push({
-        id: `potatura-${plant.name}-${stagione}-${oggi.getFullYear()}`,
+      result.push({
+        id: `potatura-${plant.collection}-${plant.id}-${stagione}-${oggi.getFullYear()}`,
         icon: "✂️",
         title: `Potatura ${plant.name}`,
-        text: plant.pruning,
+        text: plant.pruning || "Potatura prevista.",
+        type: "potatura",
+        season: stagione,
+        year: oggi.getFullYear(),
       });
     }
 
-    if (plant.fertilizerSeason?.includes(stagione)) {
-      plantTasks.push({
-        id: `concimazione-${plant.name}-${stagione}-${oggi.getFullYear()}`,
+    if (fertilizerSeasons.includes(stagione)) {
+      result.push({
+        id: `concimazione-${plant.collection}-${plant.id}-${stagione}-${oggi.getFullYear()}`,
         icon: "🌿",
         title: `Concimazione ${plant.name}`,
-        text: plant.fertilizer,
+        text: plant.fertilizer || "Concimazione prevista.",
+        type: "concimazione",
+        season: stagione,
+        year: oggi.getFullYear(),
       });
     }
 
     if (
-      plant.category === "Piante da interno" ||
-      plant.category === "Bonsai"
+      plant.collection === "Bonsai" ||
+      plant.collection === "Piante da interno"
     ) {
-      plantTasks.unshift({
-        id: `irrigazione-${plant.name}`,
+      result.unshift({
+        id: `irrigazione-${plant.collection}-${plant.id}-${stagione}-${oggi.getFullYear()}`,
         icon: "💧",
         title: `Irrigazione ${plant.name}`,
-        text: plant.water,
+        text: plant.water || "Controlla l'irrigazione.",
+        type: "irrigazione",
+        season: stagione,
+        year: oggi.getFullYear(),
       });
     }
 
-    return plantTasks;
+    return result;
   });
 
   useEffect(() => {
     const saved = localStorage.getItem("completedHomeTasks");
+
 
     if (saved) {
       try {
