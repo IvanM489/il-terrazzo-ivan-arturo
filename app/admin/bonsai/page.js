@@ -1,0 +1,745 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+
+const emptyBonsai = {
+  name: "",
+  scientific: "",
+  icon: "🌳",
+  category: "Bonsai",
+  exposure: "",
+  water: "",
+  fertilizer: "",
+  pruning: "",
+  problems: "",
+  pruning_season: [],
+  fertilizer_season: [],
+};
+
+const seasons = [
+  "fine inverno",
+  "primavera",
+  "estate",
+  "autunno",
+  "inverno",
+];
+
+export default function BonsaiAdminPage() {
+  const [bonsai, setBonsai] = useState([]);
+  const [form, setForm] = useState({ ...emptyBonsai });
+  const [editingId, setEditingId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadBonsai() {
+    setLoading(true);
+    setError("");
+
+    const response = await fetch("/api/admin/bonsai");
+    const result = await response.json();
+
+    if (!response.ok) {
+      setError(result.error || "Errore nel caricamento.");
+      setLoading(false);
+      return;
+    }
+
+    setBonsai(result);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadBonsai();
+  }, []);
+
+  function updateField(field, value) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function toggleSeason(field, season) {
+    setForm((current) => {
+      const values = current[field] || [];
+
+      return {
+        ...current,
+        [field]: values.includes(season)
+          ? values.filter((item) => item !== season)
+          : [...values, season],
+      };
+    });
+  }
+
+  function editBonsai(item) {
+    setEditingId(item.id);
+
+    setForm({
+      name: item.name || "",
+      scientific: item.scientific || "",
+      icon: item.icon || "🌳",
+      category: item.category || "Bonsai",
+      exposure: item.exposure || "",
+      water: item.water || "",
+      fertilizer: item.fertilizer || "",
+      pruning: item.pruning || "",
+      problems: item.problems || "",
+      pruning_season: item.pruning_season || [],
+      fertilizer_season: item.fertilizer_season || [],
+    });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
+  function resetForm() {
+    setEditingId(null);
+    setForm({ ...emptyBonsai });
+    setError("");
+  }
+
+  async function saveBonsai(event) {
+    event.preventDefault();
+
+    setSaving(true);
+    setError("");
+
+    const response = await fetch("/api/admin/bonsai", {
+      method: editingId ? "PUT" : "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...form,
+        id: editingId,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      setError(
+        result.error || "Errore durante il salvataggio."
+      );
+      setSaving(false);
+      return;
+    }
+
+    resetForm();
+    await loadBonsai();
+    setSaving(false);
+  }
+
+  async function deleteBonsai(id, name) {
+    if (
+      !window.confirm(
+        `Vuoi davvero eliminare "${name}"?`
+      )
+    ) {
+      return;
+    }
+
+    setError("");
+
+    const response = await fetch("/api/admin/bonsai", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      setError(
+        result.error || "Errore durante l'eliminazione."
+      );
+      return;
+    }
+
+    await loadBonsai();
+  }
+
+  return (
+    <main className="page">
+      <div className="container">
+        <Link href="/admin" className="back">
+          ← Torna all'amministrazione
+        </Link>
+
+        <header className="header">
+          <span className="eyebrow">AMMINISTRAZIONE</span>
+
+          <h1>🌳 Gestione Bonsai</h1>
+
+          <p>
+            Gestisci i bonsai presenti nella collezione.
+          </p>
+        </header>
+
+        {error && (
+          <div className="error">
+            ⚠️ {error}
+          </div>
+        )}
+
+        <section className="editor">
+          <div className="editorHeader">
+            <div>
+              <span className="eyebrow">
+                {editingId ? "MODIFICA" : "NUOVO BONSAI"}
+              </span>
+
+              <h2>
+                {editingId
+                  ? "Modifica bonsai"
+                  : "Aggiungi un bonsai"}
+              </h2>
+            </div>
+
+            {editingId && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={resetForm}
+              >
+                Annulla modifica
+              </button>
+            )}
+          </div>
+
+          <form onSubmit={saveBonsai}>
+            <div className="grid">
+              <Field
+                label="Nome"
+                value={form.name}
+                required
+                onChange={(value) =>
+                  updateField("name", value)
+                }
+              />
+
+              <Field
+                label="Nome scientifico"
+                value={form.scientific}
+                onChange={(value) =>
+                  updateField("scientific", value)
+                }
+              />
+
+              <Field
+                label="Icona"
+                value={form.icon}
+                onChange={(value) =>
+                  updateField("icon", value)
+                }
+              />
+
+              <Field
+                label="Categoria"
+                value={form.category}
+                onChange={(value) =>
+                  updateField("category", value)
+                }
+              />
+
+              <TextArea
+                label="Esposizione"
+                value={form.exposure}
+                onChange={(value) =>
+                  updateField("exposure", value)
+                }
+              />
+
+              <TextArea
+                label="Irrigazione"
+                value={form.water}
+                onChange={(value) =>
+                  updateField("water", value)
+                }
+              />
+
+              <TextArea
+                label="Concimazione"
+                value={form.fertilizer}
+                onChange={(value) =>
+                  updateField("fertilizer", value)
+                }
+              />
+
+              <TextArea
+                label="Potatura"
+                value={form.pruning}
+                onChange={(value) =>
+                  updateField("pruning", value)
+                }
+              />
+
+              <TextArea
+                label="Problemi comuni"
+                value={form.problems}
+                onChange={(value) =>
+                  updateField("problems", value)
+                }
+              />
+            </div>
+
+            <div className="seasonSections">
+              <SeasonSelector
+                title="Stagione potatura"
+                values={form.pruning_season}
+                onToggle={(season) =>
+                  toggleSeason(
+                    "pruning_season",
+                    season
+                  )
+                }
+              />
+
+              <SeasonSelector
+                title="Stagione concimazione"
+                values={form.fertilizer_season}
+                onToggle={(season) =>
+                  toggleSeason(
+                    "fertilizer_season",
+                    season
+                  )
+                }
+              />
+            </div>
+
+            <button
+              className="primary"
+              type="submit"
+              disabled={saving}
+            >
+              {saving
+                ? "Salvataggio..."
+                : editingId
+                  ? "💾 Salva modifiche"
+                  : "➕ Aggiungi bonsai"}
+            </button>
+          </form>
+        </section>
+
+        <section className="list">
+          <div className="listHeader">
+            <div>
+              <span className="eyebrow">DATABASE</span>
+              <h2>Bonsai presenti</h2>
+            </div>
+
+            <span className="count">
+              {bonsai.length}
+            </span>
+          </div>
+
+          {loading ? (
+            <div className="empty">
+              Caricamento...
+            </div>
+          ) : bonsai.length === 0 ? (
+            <div className="empty">
+              Nessun bonsai presente.
+            </div>
+          ) : (
+            <div className="plantList">
+              {bonsai.map((item) => (
+                <article
+                  className="plant"
+                  key={item.id}
+                >
+                  <div className="plantIcon">
+                    {item.icon || "🌳"}
+                  </div>
+
+                  <div className="plantInfo">
+                    <h3>{item.name}</h3>
+
+                    {item.scientific && (
+                      <em>{item.scientific}</em>
+                    )}
+
+                    <span>{item.category}</span>
+                  </div>
+
+                  <div className="actions">
+                    <button
+                      className="edit"
+                      onClick={() =>
+                        editBonsai(item)
+                      }
+                    >
+                      ✏️ Modifica
+                    </button>
+
+                    <button
+                      className="delete"
+                      onClick={() =>
+                        deleteBonsai(
+                          item.id,
+                          item.name
+                        )
+                      }
+                    >
+                      🗑️ Elimina
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+
+      <style jsx>{`
+        .page {
+          min-height: 100vh;
+          background: #f4f6f1;
+          padding: 35px 20px 60px;
+          font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .container {
+          max-width: 1100px;
+          margin: 0 auto;
+        }
+
+        .back {
+          color: #55745b;
+          text-decoration: none;
+          font-weight: 700;
+        }
+
+        .header {
+          margin: 28px 0;
+        }
+
+        .eyebrow {
+          color: #55745b;
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 1.3px;
+        }
+
+        h1 {
+          color: #354d3b;
+          font-size: 38px;
+          margin: 8px 0;
+        }
+
+        h2 {
+          color: #354d3b;
+          margin: 6px 0;
+        }
+
+        .header p {
+          color: #687168;
+        }
+
+        .error {
+          background: #fff0ed;
+          color: #b42318;
+          border: 1px solid #f0c8c0;
+          padding: 14px 16px;
+          border-radius: 14px;
+          margin-bottom: 20px;
+        }
+
+        .editor,
+        .list {
+          background: #fffdf8;
+          border: 1px solid #e8dfcf;
+          border-radius: 24px;
+          padding: 25px;
+          margin-bottom: 24px;
+          box-shadow: 0 8px 24px rgba(50, 70, 50, 0.06);
+        }
+
+        .editorHeader,
+        .listHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 20px;
+          margin-bottom: 22px;
+        }
+
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+        }
+
+        .field {
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+        }
+
+        .field label {
+          color: #354d3b;
+          font-size: 14px;
+          font-weight: 700;
+        }
+
+        input,
+        textarea {
+          width: 100%;
+          box-sizing: border-box;
+          border: 1px solid #d8d0c0;
+          border-radius: 12px;
+          padding: 11px 12px;
+          background: white;
+          color: #263126;
+          font: inherit;
+        }
+
+        textarea {
+          min-height: 105px;
+          resize: vertical;
+        }
+
+        .seasonSections {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 18px;
+          margin: 22px 0;
+        }
+
+        .seasonBox {
+          padding: 17px;
+          border-radius: 16px;
+          background: #f4f6f1;
+        }
+
+        .seasonBox h3 {
+          margin: 0 0 12px;
+          color: #354d3b;
+          font-size: 15px;
+        }
+
+        .seasons {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .season {
+          border: 1px solid #d8e0d4;
+          background: white;
+          color: #55745b;
+          border-radius: 20px;
+          padding: 8px 11px;
+          cursor: pointer;
+          font-size: 13px;
+        }
+
+        .season.active {
+          background: #55745b;
+          border-color: #55745b;
+          color: white;
+        }
+
+        .primary {
+          border: none;
+          background: #55745b;
+          color: white;
+          border-radius: 12px;
+          padding: 13px 18px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .primary:disabled {
+          opacity: 0.6;
+        }
+
+        .secondary {
+          border: 1px solid #d8d0c0;
+          background: white;
+          color: #55745b;
+          border-radius: 12px;
+          padding: 10px 14px;
+          cursor: pointer;
+          font-weight: 700;
+        }
+
+        .count {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: #e9f1e5;
+          color: #55745b;
+          font-weight: 800;
+        }
+
+        .plantList {
+          display: grid;
+          gap: 10px;
+        }
+
+        .plant {
+          display: flex;
+          align-items: center;
+          gap: 15px;
+          padding: 15px;
+          border: 1px solid #e8dfcf;
+          border-radius: 16px;
+          background: #fafbf7;
+        }
+
+        .plantIcon {
+          font-size: 35px;
+          width: 48px;
+          text-align: center;
+        }
+
+        .plantInfo {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .plantInfo h3 {
+          margin: 0 0 3px;
+          color: #354d3b;
+        }
+
+        .plantInfo em {
+          display: block;
+          color: #687168;
+          font-size: 13px;
+          margin-bottom: 4px;
+        }
+
+        .plantInfo span {
+          color: #7b837c;
+          font-size: 12px;
+        }
+
+        .actions {
+          display: flex;
+          gap: 7px;
+        }
+
+        .edit,
+        .delete {
+          border-radius: 10px;
+          padding: 9px 11px;
+          cursor: pointer;
+          font-weight: 700;
+          background: white;
+        }
+
+        .edit {
+          border: 1px solid #d8e0d4;
+          color: #55745b;
+        }
+
+        .delete {
+          border: 1px solid #efd0cb;
+          color: #b42318;
+        }
+
+        .empty {
+          text-align: center;
+          padding: 30px;
+          color: #687168;
+        }
+
+        @media (max-width: 700px) {
+          .grid,
+          .seasonSections {
+            grid-template-columns: 1fr;
+          }
+
+          .plant {
+            align-items: flex-start;
+            flex-wrap: wrap;
+          }
+
+          .actions {
+            width: 100%;
+          }
+
+          .actions button {
+            flex: 1;
+          }
+
+          h1 {
+            font-size: 30px;
+          }
+        }
+      `}</style>
+    </main>
+  );
+}
+
+function Field({ label, value, onChange, required }) {
+  return (
+    <div className="field">
+      <label>{label}</label>
+
+      <input
+        value={value}
+        required={required}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+      />
+    </div>
+  );
+}
+
+function TextArea({ label, value, onChange }) {
+  return (
+    <div className="field">
+      <label>{label}</label>
+
+      <textarea
+        value={value}
+        onChange={(event) =>
+          onChange(event.target.value)
+        }
+      />
+    </div>
+  );
+}
+
+function SeasonSelector({
+  title,
+  values,
+  onToggle,
+}) {
+  return (
+    <div className="seasonBox">
+      <h3>{title}</h3>
+
+      <div className="seasons">
+        {seasons.map((season) => (
+          <button
+            type="button"
+            key={season}
+            className={`season ${
+              values.includes(season)
+                ? "active"
+                : ""
+            }`}
+            onClick={() => onToggle(season)}
+          >
+            {season}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
