@@ -1,368 +1,818 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createClient } from "../lib/supabase/client";
+import { plants } from "../data/plants";
 
 const sections = [
-{ icon: "🌿", title: "Le mie piante", text: "Gestisci le tue piante", color: "green" },
-{ icon: "💧", title: "Irrigazione", text: "Controlla le annaffiature", color: "blue" },
-{ icon: "📅", title: "Calendario", text: "Cure e attività", color: "orange" },
-{ icon: "📔", title: "Diario", text: "Racconta la vita del terrazzo", color: "purple" },
-{ icon: "📷", title: "Fotografie", text: "Memorie e progressi", color: "pink" },
-{ icon: "☀️", title: "Condizioni", text: "Meteo e ambiente", color: "yellow" },
+  {
+    icon: "🌿",
+    title: "Le mie piante",
+    text: "Gestisci le tue piante",
+    color: "green",
+    href: "/piante",
+  },
+  {
+    icon: "💧",
+    title: "Irrigazione",
+    text: "Controlla le annaffiature",
+    color: "blue",
+    href: "/irrigazione",
+  },
+  {
+    icon: "📅",
+    title: "Calendario",
+    text: "Cure e attività",
+    color: "orange",
+    href: "/calendario",
+  },
+  {
+    icon: "🪴",
+    title: "Piante da interno",
+    text: "Gestisci le piante di casa",
+    color: "purple",
+    href: "/piante-interne",
+  },
+  {
+    icon: "🌳",
+    title: "Bonsai",
+    text: "Cura e coltiva i tuoi bonsai",
+    color: "pink",
+    href: "/bonsai",
+  },
+  {
+    icon: "☀️",
+    title: "Condizioni",
+    text: "Meteo e ambiente",
+    color: "yellow",
+    href: "#",
+  },
 ];
 
 export default function Home() {
-const [welcome, setWelcome] = useState(true);
+  const [welcome, setWelcome] = useState(true);
+  const [showTasks, setShowTasks] = useState(true);
+  const [completedTasks, setCompletedTasks] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loadingUser, setLoadingUser] = useState(true);
 
-return (
-<>
-<main className="app">
-<header className="header">
-<div className="brand">
-<div className="logo">🌿</div>
-<div>
-<h1>Il Terrazzo di Ivan & Arturo</h1>
-<p>Il nostro piccolo angolo verde.</p>
-</div>
-</div>
+  const oggi = new Date();
+  const mese = oggi.getMonth();
 
-<button
-className="profile"
-onClick={() => setWelcome(!welcome)}
-aria-label="Profilo"
->
-I&A
-</button>
-</header>
+  const stagione =
+    mese === 11 || mese === 0 || mese === 1
+      ? "inverno"
+      : mese >= 2 && mese <= 4
+        ? "primavera"
+        : mese >= 5 && mese <= 7
+          ? "estate"
+          : "autunno";
 
-{welcome && (
-<section className="welcome">
-<div>
-<span className="eyebrow">BENVENUTI A CASA</span>
-<h2>Prendiamoci cura<br />del nostro terrazzo.</h2>
-<p>
-Tutte le nostre piante, le loro cure, le fotografie
-e i ricordi in un unico posto.
-</p>
-</div>
-<div className="welcomePlant">🪴</div>
-</section>
-)}
+  const periodoPotatura =
+    mese === 1 ? "fine inverno" : stagione;
 
-<section className="today">
-<div>
-<span className="eyebrow">OGGI</span>
-<h3>Il terrazzo ha bisogno di te</h3>
-</div>
-<div className="todayBadge">0 attività</div>
-</section>
+  const tasks = plants.flatMap((plant) => {
+    const plantTasks = [];
 
-<section className="grid">
-{sections.map((section) => (
-<button
-className={`card ${section.color}`}
-key={section.title}
- onClick={() => section.title === "Calendario" ? window.location.href = "/calendario" : section.title === "Irrigazione" ? window.location.href = "/irrigazione" : section.title === "Le mie piante" ? window.location.href = "/piante" : alert(`${section.title}: sezione in costruzione 🌱`)}
->
-<div className="cardIcon">{section.icon}</div>
-<div className="cardText">
-<h3>{section.title}</h3>
-<p>{section.text}</p>
-</div>
-<span className="arrow">›</span>
-</button>
-))}
-</section>
+    if (
+      plant.pruningSeason?.includes(stagione) ||
+      plant.pruningSeason?.includes(periodoPotatura)
+    ) {
+      plantTasks.push({
+        id: `potatura-${plant.name}-${stagione}-${oggi.getFullYear()}`,
+        icon: "✂️",
+        title: `Potatura ${plant.name}`,
+        text: plant.pruning,
+      });
+    }
 
-<section className="quote">
-<span>🌱</span>
-<p>
-“Un terrazzo non è solo uno spazio: è qualcosa che cresce insieme a noi.”
-</p>
-</section>
+    if (plant.fertilizerSeason?.includes(stagione)) {
+      plantTasks.push({
+        id: `concimazione-${plant.name}-${stagione}-${oggi.getFullYear()}`,
+        icon: "🌿",
+        title: `Concimazione ${plant.name}`,
+        text: plant.fertilizer,
+      });
+    }
 
-<footer>
-<span>Il Terrazzo di Ivan & Arturo</span>
-<span>v0.1 · In sviluppo</span>
-</footer>
-</main>
+    if (
+      plant.category === "Piante da interno" ||
+      plant.category === "Bonsai"
+    ) {
+      plantTasks.unshift({
+        id: `irrigazione-${plant.name}`,
+        icon: "💧",
+        title: `Irrigazione ${plant.name}`,
+        text: plant.water,
+      });
+    }
 
-<style jsx>{`
-* {
-box-sizing: border-box;
-}
+    return plantTasks;
+  });
 
-body {
-margin: 0;
-background: #f4f6f1;
-color: #263126;
-font-family: Arial, Helvetica, sans-serif;
-}
+  useEffect(() => {
+    const saved = localStorage.getItem("completedHomeTasks");
 
-button {
-font: inherit;
-}
+    if (saved) {
+      try {
+        setCompletedTasks(JSON.parse(saved));
+      } catch {
+        setCompletedTasks([]);
+      }
+    }
+  }, []);
 
-.app {
-min-height: 100vh;
-max-width: 1100px;
-margin: 0 auto;
-padding: 34px 28px 30px;
-}
+  useEffect(() => {
+    const checkUser = async () => {
+      const supabase = createClient();
 
-.header {
-display: flex;
-align-items: center;
-justify-content: space-between;
-margin-bottom: 30px;
-}
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-.brand {
-display: flex;
-align-items: center;
-gap: 15px;
-}
+      if (!user) {
+        setIsAdmin(false);
+        setLoadingUser(false);
+        return;
+      }
 
-.logo {
-width: 58px;
-height: 58px;
-border-radius: 18px;
-display: grid;
-place-items: center;
-background: #dcebd9;
-font-size: 30px;
-}
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("ruolo")
+        .eq("id", user.id)
+        .single();
 
-.brand h1 {
-margin: 0;
-font-size: 25px;
-letter-spacing: -0.5px;
-}
+      setIsAdmin(profile?.ruolo === "admin");
+      setLoadingUser(false);
+    };
 
-.brand p {
-margin: 5px 0 0;
-color: #71806f;
-font-size: 14px;
-}
+    checkUser();
+  }, []);
 
-.profile {
-width: 48px;
-height: 48px;
-border: 0;
-border-radius: 50%;
-background: #2f4934;
-color: white;
-font-size: 13px;
-font-weight: bold;
-cursor: pointer;
-}
+  const toggleTask = (id) => {
+    const next = completedTasks.includes(id)
+      ? completedTasks.filter((taskId) => taskId !== id)
+      : [...completedTasks, id];
 
-.welcome {
-min-height: 270px;
-padding: 42px 45px;
-border-radius: 30px;
-background: linear-gradient(120deg, #dcebd9, #eef3e8);
-display: flex;
-align-items: center;
-justify-content: space-between;
-overflow: hidden;
-margin-bottom: 28px;
-}
+    setCompletedTasks(next);
+    localStorage.setItem(
+      "completedHomeTasks",
+      JSON.stringify(next)
+    );
+  };
 
-.eyebrow {
-font-size: 11px;
-font-weight: 800;
-letter-spacing: 1.6px;
-color: #668064;
-}
+  const logout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  };
 
-.welcome h2 {
-margin: 12px 0;
-font-size: clamp(32px, 5vw, 52px);
-line-height: 1.02;
-letter-spacing: -2px;
-color: #29402d;
-}
+  const activeTasks = tasks.filter(
+    (task) => !completedTasks.includes(task.id)
+  );
 
-.welcome p {
-max-width: 530px;
-margin: 0;
-color: #647064;
-line-height: 1.6;
-font-size: 15px;
-}
+  return (
+    <>
+      <main className="app">
+        <header className="header">
+          <div className="brand">
+            <span className="brandIcon">🌿</span>
 
-.welcomePlant {
-font-size: 120px;
-transform: rotate(-5deg);
-padding-right: 25px;
-}
+            <div>
+              <h1>Il Terrazzo di Ivan & Arturo</h1>
+              <p>Il nostro piccolo angolo verde.</p>
+            </div>
+          </div>
 
-.today {
-display: flex;
-justify-content: space-between;
-align-items: center;
-margin: 10px 3px 16px;
-}
+          <div className="headerActions">
+            {!loadingUser && isAdmin && (
+              <button
+                className="adminButton"
+                onClick={() => {
+                  window.location.href = "/admin";
+                }}
+                aria-label="Amministrazione"
+              >
+                ⚙️ Admin
+              </button>
+            )}
 
-.today h3 {
-margin: 6px 0 0;
-font-size: 20px;
-}
+            <button
+              className="profile"
+              onClick={() => setWelcome(!welcome)}
+              aria-label="Profilo"
+            >
+              I&A
+            </button>
 
-.todayBadge {
-padding: 9px 15px;
-border-radius: 30px;
-background: white;
-color: #71806f;
-font-size: 13px;
-box-shadow: 0 3px 15px rgba(35, 55, 35, 0.06);
-}
+            <button
+              className="logoutButton"
+              onClick={logout}
+              aria-label="Esci"
+              title="Esci"
+            >
+              ↪
+            </button>
+          </div>
+        </header>
 
-.grid {
-display: grid;
-grid-template-columns: repeat(3, 1fr);
-gap: 15px;
-}
+        {welcome && (
+          <section className="welcome">
+            <div>
+              <span className="eyebrow">BENVENUTI A CASA</span>
 
-.card {
-min-height: 145px;
-padding: 23px;
-border: 1px solid rgba(0,0,0,0.04);
-border-radius: 23px;
-text-align: left;
-cursor: pointer;
-display: flex;
-flex-direction: column;
-justify-content: space-between;
-position: relative;
-transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
+              <h2>
+                Prendiamoci cura
+                <br />
+                del nostro terrazzo.
+              </h2>
 
-.card:hover {
-transform: translateY(-3px);
-box-shadow: 0 12px 28px rgba(35, 55, 35, 0.10);
-}
+              <p>
+                Tutte le nostre piante, le loro cure,
+                le fotografie e i ricordi in un unico posto.
+              </p>
+            </div>
 
-.green { background: #e3f0df; }
-.blue { background: #e0edf3; }
-.orange { background: #f5ead8; }
-.purple { background: #ebe4f2; }
-.pink { background: #f3e3e3; }
-.yellow { background: #f2efd8; }
+            <div className="welcomePlant">🪴</div>
+          </section>
+        )}
 
-.cardIcon {
-font-size: 29px;
-}
+        <section className="today">
+          <div className="todayHeader">
+            <div>
+              <span className="eyebrow">OGGI</span>
 
-.cardText h3 {
-margin: 10px 0 4px;
-font-size: 18px;
-color: #29352b;
-}
+              <h2>
+                Il terrazzo ha bisogno di te
+              </h2>
+            </div>
 
-.cardText p {
-margin: 0;
-color: #758075;
-font-size: 13px;
-}
+            <div className="taskCount">
+              {activeTasks.length}
+              <span>
+                {activeTasks.length === 1
+                  ? " attività"
+                  : " attività"}
+              </span>
+            </div>
+          </div>
+        </section>
 
-.arrow {
-position: absolute;
-right: 20px;
-bottom: 17px;
-font-size: 25px;
-color: #879287;
-}
+        {showTasks && (
+          <section className="tasksPanel">
+            <div className="tasksHeader">
+              <div>
+                <span className="eyebrow">PROMEMORIA</span>
 
-.quote {
-margin-top: 28px;
-padding: 22px 25px;
-border-radius: 20px;
-background: white;
-display: flex;
-gap: 14px;
-align-items: center;
-color: #687368;
-box-shadow: 0 3px 15px rgba(35, 55, 35, 0.05);
-}
+                <h2>🌱 Cose imminenti da fare</h2>
 
-.quote span {
-font-size: 25px;
-}
+                <p>
+                  Attività consigliate per la stagione:
+                  <strong> {stagione}</strong>
+                </p>
+              </div>
 
-.quote p {
-margin: 0;
-font-size: 14px;
-font-style: italic;
-}
+              <button
+                className="closeTasks"
+                onClick={() => setShowTasks(false)}
+                aria-label="Chiudi promemoria"
+              >
+                ✕
+              </button>
+            </div>
 
-footer {
-display: flex;
-justify-content: space-between;
-margin-top: 28px;
-padding: 0 4px;
-color: #929a91;
-font-size: 11px;
-}
+            <div className="taskList">
+              {activeTasks.map((task) => (
+                <button
+                  className="taskCheck"
+                  key={task.id}
+                  onClick={() => toggleTask(task.id)}
+                  aria-label={`Segna come completata: ${task.title}`}
+                >
+                  <span className="checkbox">☐</span>
 
-@media (max-width: 700px) {
-.app {
-padding: 20px 16px 25px;
-}
+                  <span className="taskContent">
+                    <strong>
+                      {task.icon} {task.title}
+                    </strong>
 
-.brand h1 {
-font-size: 19px;
-}
+                    <span>{task.text}</span>
+                  </span>
+                </button>
+              ))}
 
-.brand p {
-font-size: 12px;
-}
+              {activeTasks.length === 0 && (
+                <div className="allDone">
+                  ✨ Tutto fatto!
+                  <span>
+                    Nessuna attività da completare.
+                  </span>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
-.logo {
-width: 48px;
-height: 48px;
-font-size: 25px;
-}
+        {!showTasks && (
+          <button
+            className="showTasks"
+            onClick={() => setShowTasks(true)}
+          >
+            🌱 Mostra promemoria
+          </button>
+        )}
 
-.welcome {
-min-height: 290px;
-padding: 30px 25px;
-border-radius: 25px;
-}
+        <section className="cards">
+          {sections.map((section) => (
+            <button
+              className={`card ${section.color}`}
+              key={section.title}
+              onClick={() => {
+                if (section.href === "#") {
+                  alert(
+                    `${section.title}: sezione in costruzione 🌱`
+                  );
+                  return;
+                }
 
-.welcomePlant {
-position: absolute;
-right: 5px;
-margin-top: 150px;
-font-size: 80px;
-opacity: 0.7;
-}
+                window.location.href = section.href;
+              }}
+            >
+              <span className="cardIcon">
+                {section.icon}
+              </span>
 
-.grid {
-grid-template-columns: 1fr 1fr;
-gap: 11px;
-}
+              <span className="cardTitle">
+                {section.title}
+              </span>
 
-.card {
-min-height: 145px;
-padding: 18px;
-}
+              <span className="cardText">
+                {section.text}
+              </span>
 
-.cardText h3 {
-font-size: 16px;
-}
+              <span className="arrow">›</span>
+            </button>
+          ))}
+        </section>
 
-.today h3 {
-font-size: 17px;
-}
+        <section className="quote">
+          <span>🌱</span>
 
-footer {
-flex-direction: column;
-gap: 5px;
-}
-}
-`}</style>
-</>
-);
+          <p>
+            “Un terrazzo non è solo uno spazio:
+            è qualcosa che cresce insieme a noi.”
+          </p>
+        </section>
+
+        <footer>
+          <span>Il Terrazzo di Ivan & Arturo</span>
+          <span>v0.1 · In sviluppo</span>
+        </footer>
+      </main>
+
+      <style jsx>{`
+        * {
+          box-sizing: border-box;
+        }
+
+        body {
+          margin: 0;
+          background: #f4f6f1;
+          color: #263126;
+          font-family: Arial, Helvetica, sans-serif;
+        }
+
+        button {
+          font: inherit;
+        }
+
+        .app {
+          min-height: 100vh;
+          max-width: 1100px;
+          margin: 0 auto;
+          padding: 28px 24px 40px;
+        }
+
+        .header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 20px;
+          margin-bottom: 28px;
+        }
+
+        .brand {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+
+        .brandIcon {
+          font-size: 42px;
+        }
+
+        .brand h1 {
+          margin: 0;
+          color: #354d3b;
+          font-size: 25px;
+        }
+
+        .brand p {
+          margin: 5px 0 0;
+          color: #687168;
+        }
+
+        .headerActions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .profile,
+        .adminButton,
+        .logoutButton {
+          border: 1px solid #d9e0d5;
+          background: #fffdf8;
+          color: #354d3b;
+          border-radius: 14px;
+          cursor: pointer;
+          font-weight: 700;
+        }
+
+        .profile {
+          width: 48px;
+          height: 48px;
+        }
+
+        .adminButton {
+          padding: 12px 15px;
+        }
+
+        .logoutButton {
+          width: 48px;
+          height: 48px;
+          font-size: 21px;
+        }
+
+        .adminButton:hover,
+        .logoutButton:hover,
+        .profile:hover {
+          background: #edf3e9;
+        }
+
+        .welcome {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 30px;
+          padding: 30px;
+          border-radius: 26px;
+          background: #e9f1e5;
+          margin-bottom: 28px;
+        }
+
+        .eyebrow {
+          display: block;
+          color: #55745b;
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: 1.4px;
+        }
+
+        .welcome h2 {
+          margin: 8px 0 10px;
+          color: #354d3b;
+          font-size: 32px;
+          line-height: 1.15;
+        }
+
+        .welcome p {
+          margin: 0;
+          color: #687168;
+          line-height: 1.6;
+        }
+
+        .welcomePlant {
+          font-size: 74px;
+        }
+
+        .today {
+          margin: 10px 0 0;
+        }
+
+        .todayHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 20px;
+        }
+
+        .today h2 {
+          margin: 7px 0 0;
+          color: #354d3b;
+          font-size: 27px;
+        }
+
+        .taskCount {
+          color: #354d3b;
+          font-size: 30px;
+          font-weight: 800;
+          text-align: right;
+        }
+
+        .taskCount span {
+          display: block;
+          font-size: 13px;
+          font-weight: 600;
+          color: #687168;
+        }
+
+        .tasksPanel {
+          margin-top: 24px;
+          padding: 24px;
+          background: #fffdf8;
+          border: 1px solid #e8dfcf;
+          border-radius: 24px;
+          box-shadow: 0 8px 24px rgba(50, 70, 50, 0.06);
+        }
+
+        .tasksHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 20px;
+          margin-bottom: 18px;
+        }
+
+        .tasksHeader h2 {
+          margin: 6px 0;
+          font-size: 23px;
+          color: #354d3b;
+        }
+
+        .tasksHeader p {
+          margin: 0;
+          color: #687168;
+          font-size: 14px;
+        }
+
+        .closeTasks {
+          border: none;
+          background: #f1eee6;
+          color: #687168;
+          width: 38px;
+          height: 38px;
+          border-radius: 50%;
+          cursor: pointer;
+        }
+
+        .taskList {
+          display: grid;
+          gap: 10px;
+        }
+
+        .taskCheck {
+          width: 100%;
+          display: flex;
+          align-items: flex-start;
+          gap: 13px;
+          text-align: left;
+          border: 1px solid #e8dfcf;
+          background: #fafbf7;
+          border-radius: 15px;
+          padding: 15px;
+          cursor: pointer;
+          color: #354d3b;
+        }
+
+        .taskCheck:hover {
+          background: #f1f6ed;
+        }
+
+        .checkbox {
+          font-size: 22px;
+          line-height: 1;
+        }
+
+        .taskContent {
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+        }
+
+        .taskContent strong {
+          font-size: 15px;
+        }
+
+        .taskContent span {
+          color: #687168;
+          font-size: 13px;
+          line-height: 1.45;
+        }
+
+        .allDone {
+          text-align: center;
+          padding: 25px;
+          color: #55745b;
+          font-weight: 700;
+        }
+
+        .allDone span {
+          display: block;
+          margin-top: 5px;
+          color: #687168;
+          font-size: 14px;
+          font-weight: 400;
+        }
+
+        .showTasks {
+          margin-top: 20px;
+          border: none;
+          background: #e9f1e5;
+          color: #55745b;
+          border-radius: 14px;
+          padding: 11px 16px;
+          cursor: pointer;
+          font-weight: 700;
+        }
+
+        .cards {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 16px;
+          margin-top: 28px;
+        }
+
+        .card {
+          position: relative;
+          min-height: 165px;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          justify-content: flex-start;
+          text-align: left;
+          padding: 23px;
+          border: 1px solid transparent;
+          border-radius: 22px;
+          cursor: pointer;
+          transition: transform 0.15s ease;
+        }
+
+        .card:hover {
+          transform: translateY(-2px);
+        }
+
+        .cardIcon {
+          font-size: 34px;
+          margin-bottom: 14px;
+        }
+
+        .cardTitle {
+          color: #354d3b;
+          font-size: 18px;
+          font-weight: 800;
+        }
+
+        .cardText {
+          margin-top: 6px;
+          color: #687168;
+          font-size: 14px;
+          line-height: 1.4;
+        }
+
+        .arrow {
+          position: absolute;
+          right: 19px;
+          bottom: 17px;
+          color: #55745b;
+          font-size: 25px;
+        }
+
+        .green {
+          background: #e9f1e5;
+          border-color: #d8e6d2;
+        }
+
+        .blue {
+          background: #e9f2f5;
+          border-color: #d5e5ea;
+        }
+
+        .orange {
+          background: #f7efe3;
+          border-color: #eadcca;
+        }
+
+        .purple {
+          background: #f0ebf5;
+          border-color: #e1d8eb;
+        }
+
+        .pink {
+          background: #f5e9ed;
+          border-color: #ead7de;
+        }
+
+        .yellow {
+          background: #f5f1df;
+          border-color: #e9e1c6;
+        }
+
+        .quote {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          margin: 34px 0 25px;
+          padding: 25px;
+          color: #55745b;
+          text-align: center;
+        }
+
+        .quote span {
+          font-size: 25px;
+        }
+
+        .quote p {
+          margin: 0;
+          font-style: italic;
+        }
+
+        footer {
+          display: flex;
+          justify-content: space-between;
+          gap: 20px;
+          padding-top: 20px;
+          border-top: 1px solid #dde2d9;
+          color: #7b837c;
+          font-size: 12px;
+        }
+
+        @media (max-width: 800px) {
+          .cards {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        @media (max-width: 560px) {
+          .app {
+            padding: 20px 15px 30px;
+          }
+
+          .header {
+            align-items: flex-start;
+          }
+
+          .brand h1 {
+            font-size: 19px;
+          }
+
+          .brand p {
+            font-size: 13px;
+          }
+
+          .brandIcon {
+            font-size: 32px;
+          }
+
+          .adminButton {
+            font-size: 0;
+            padding: 12px;
+          }
+
+          .adminButton::first-letter {
+            font-size: 18px;
+          }
+
+          .welcome {
+            padding: 22px;
+          }
+
+          .welcome h2 {
+            font-size: 26px;
+          }
+
+          .welcomePlant {
+            display: none;
+          }
+
+          .todayHeader {
+            align-items: flex-end;
+          }
+
+          .cards {
+            grid-template-columns: 1fr;
+          }
+
+          .tasksPanel {
+            padding: 18px;
+          }
+
+          footer {
+            flex-direction: column;
+          }
+        }
+      `}</style>
+    </>
+  );
 }
