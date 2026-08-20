@@ -40,11 +40,11 @@ const sections = [
     href: "/bonsai",
   },
   {
-    icon: "☀️",
-    title: "Condizioni",
-    text: "Meteo e ambiente",
+    icon: "🔬",
+    title: "Diagnosi AI",
+    text: "Analizza la salute delle tue piante",
     color: "yellow",
-    href: "#",
+    href: "/diagnosi-ai",
   },
 ];
 
