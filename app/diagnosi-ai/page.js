@@ -8,6 +8,7 @@ export default function DiagnosiAI() {
   const fileInputRef = useRef(null);
 
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [photo, setPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState("");
@@ -33,6 +34,7 @@ export default function DiagnosiAI() {
 
   async function startCamera() {
     setCameraError("");
+    setCameraReady(false);
 
     if (!window.isSecureContext) {
       setCameraError(
@@ -63,17 +65,36 @@ export default function DiagnosiAI() {
       streamRef.current = stream;
       setCameraOpen(true);
 
-      requestAnimationFrame(async () => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
+      const video = videoRef.current;
 
+      if (video) {
+        video.srcObject = stream;
+
+        const markReady = () => {
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            setCameraReady(true);
+          }
+        };
+
+        video.onloadedmetadata = async () => {
           try {
-            await videoRef.current.play();
+            await video.play();
+            markReady();
           } catch (error) {
             console.error("Errore avvio video:", error);
           }
+        };
+
+        video.oncanplay = markReady;
+        video.onplaying = markReady;
+
+        try {
+          await video.play();
+          markReady();
+        } catch (error) {
+          console.error("Errore avvio video:", error);
         }
-      });
+      }
     } catch (error) {
       console.error("Errore fotocamera:", error);
 
@@ -102,9 +123,14 @@ export default function DiagnosiAI() {
   function takePhoto() {
     const video = videoRef.current;
 
-    if (!video || !video.videoWidth || !video.videoHeight) {
+    if (
+      !video ||
+      !cameraReady ||
+      !video.videoWidth ||
+      !video.videoHeight
+    ) {
       setCameraError(
-        "La fotocamera non è ancora pronta. Attendi un momento e riprova."
+        "La fotocamera non è ancora pronta. Attendi un momento."
       );
       return;
     }
@@ -158,6 +184,7 @@ export default function DiagnosiAI() {
 
     setCameraError("");
     setDiagnosis("");
+    setCameraReady(false);
     stopCamera();
 
     if (photoPreview) {
@@ -422,6 +449,7 @@ export default function DiagnosiAI() {
             >
               <button
                 onClick={takePhoto}
+                disabled={!cameraReady}
                 style={{
                   width: 72,
                   height: 72,
@@ -429,11 +457,12 @@ export default function DiagnosiAI() {
                   border: "6px solid white",
                   background: "#354d3b",
                   color: "white",
-                  cursor: "pointer",
+                  cursor: cameraReady ? "pointer" : "wait",
                   fontSize: 28,
+                  opacity: cameraReady ? 1 : 0.5,
                 }}
               >
-                📷
+                {cameraReady ? "📷" : "⏳"}
               </button>
 
               <button
