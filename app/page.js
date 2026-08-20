@@ -70,6 +70,7 @@ export default function Home() {
 
   const periodoPotatura =
     mese === 1 ? "fine inverno" : stagione;
+
   useEffect(() => {
     async function loadPlantsForTasks() {
       try {
@@ -151,7 +152,6 @@ export default function Home() {
 
   useEffect(() => {
     const saved = localStorage.getItem("completedHomeTasks");
-
 
     if (saved) {
       try {
@@ -240,9 +240,21 @@ export default function Home() {
             <button
               className="profile"
               onClick={() => setWelcome(!welcome)}
-              aria-label="Profilo"
+              aria-label="Mostra benvenuto"
+              title="Mostra benvenuto"
             >
               I&A
+            </button>
+
+            <button
+              className="profileButton"
+              onClick={() => {
+                window.location.href = "/profilo";
+              }}
+              aria-label="Profilo"
+              title="Profilo"
+            >
+              👤 Profilo
             </button>
 
             <button
@@ -469,6 +481,7 @@ export default function Home() {
         }
 
         .profile,
+        .profileButton,
         .adminButton,
         .logoutButton {
           border: 1px solid #d9e0d5;
@@ -484,6 +497,11 @@ export default function Home() {
           height: 48px;
         }
 
+        .profileButton {
+          height: 48px;
+          padding: 0 15px;
+        }
+
         .adminButton {
           padding: 12px 15px;
         }
@@ -496,7 +514,8 @@ export default function Home() {
 
         .adminButton:hover,
         .logoutButton:hover,
-        .profile:hover {
+        .profile:hover,
+        .profileButton:hover {
           background: #edf3e9;
         }
 
@@ -813,6 +832,16 @@ export default function Home() {
 
           .brandIcon {
             font-size: 32px;
+          }
+
+          .headerActions {
+            flex-wrap: wrap;
+            justify-content: flex-end;
+          }
+
+          .profileButton {
+            font-size: 13px;
+            padding: 0 11px;
           }
 
           .adminButton {
