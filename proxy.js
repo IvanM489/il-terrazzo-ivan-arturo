@@ -44,8 +44,12 @@ export async function proxy(request) {
 
   const pathname = request.nextUrl.pathname;
 
-  // La pagina login deve essere sempre accessibile.
-  if (pathname === "/login") {
+  // Pagine che devono essere sempre accessibili
+  // anche senza autenticazione.
+  if (
+    pathname === "/login" ||
+    pathname === "/recupero-password"
+  ) {
     return response;
   }
 
