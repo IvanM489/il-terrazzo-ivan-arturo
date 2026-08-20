@@ -6,6 +6,7 @@ export default function DiagnosiAI() {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const fileInputRef = useRef(null);
+  const canvasRef = useRef(null);
 
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -16,8 +17,16 @@ export default function DiagnosiAI() {
   const [diagnosis, setDiagnosis] = useState("");
 
   useEffect(() => {
-    return () => stopCamera();
-  }, []);
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+
+      if (photoPreview) {
+        URL.revokeObjectURL(photoPreview);
+      }
+    };
+  }, [photoPreview]);
 
   function stopCamera() {
     if (streamRef.current) {
@@ -26,14 +35,17 @@ export default function DiagnosiAI() {
     }
 
     if (videoRef.current) {
+      videoRef.current.pause();
       videoRef.current.srcObject = null;
     }
 
     setCameraOpen(false);
+    setCameraReady(false);
   }
 
   async function startCamera() {
     setCameraError("");
+    setDiagnosis("");
     setCameraReady(false);
 
     if (!window.isSecureContext) {
@@ -53,63 +65,117 @@ export default function DiagnosiAI() {
     try {
       stopCamera();
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-        audio: false,
-      });
+      let stream;
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: {
+              exact: "environment",
+            },
+            width: {
+              ideal: 1920,
+            },
+            height: {
+              ideal: 1080,
+            },
+          },
+          audio: false,
+        });
+      } catch (rearError) {
+        console.warn(
+          "Fotocamera posteriore exact non disponibile:",
+          rearError
+        );
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "environment",
+            width: {
+              ideal: 1920,
+            },
+            height: {
+              ideal: 1080,
+            },
+          },
+          audio: false,
+        });
+      }
 
       streamRef.current = stream;
-      setCameraOpen(true);
 
       const video = videoRef.current;
 
-      if (video) {
-        video.srcObject = stream;
+      setCameraOpen(true);
 
-        const markReady = () => {
-          if (video.videoWidth > 0 && video.videoHeight > 0) {
-            setCameraReady(true);
-          }
-        };
-
-        video.onloadedmetadata = async () => {
-          try {
-            await video.play();
-            markReady();
-          } catch (error) {
-            console.error("Errore avvio video:", error);
-          }
-        };
-
-        video.oncanplay = markReady;
-        video.onplaying = markReady;
-
-        try {
-          await video.play();
-          markReady();
-        } catch (error) {
-          console.error("Errore avvio video:", error);
-        }
+      if (!video) {
+        throw new Error(
+          "Elemento video non disponibile."
+        );
       }
+
+      video.srcObject = stream;
+      video.setAttribute("playsinline", "");
+      video.setAttribute("autoplay", "");
+      video.muted = true;
+
+      const ready = () => {
+        if (
+          video.readyState >= 2 &&
+          video.videoWidth > 0 &&
+          video.videoHeight > 0
+        ) {
+          setCameraReady(true);
+        }
+      };
+
+      video.onloadedmetadata = ready;
+      video.onloadeddata = ready;
+      video.oncanplay = ready;
+      video.onplaying = ready;
+
+      try {
+        await video.play();
+      } catch (playError) {
+        console.warn(
+          "video.play() non riuscito immediatamente:",
+          playError
+        );
+      }
+
+      ready();
+
+      const timeout = setTimeout(() => {
+        if (
+          video.videoWidth > 0 &&
+          video.videoHeight > 0
+        ) {
+          setCameraReady(true);
+        }
+      }, 1200);
+
+      setTimeout(() => clearTimeout(timeout), 2000);
     } catch (error) {
-      console.error("Errore fotocamera:", error);
+      console.error(
+        "Errore fotocamera:",
+        error
+      );
 
       let message =
         "Impossibile inizializzare la fotocamera.";
 
       if (error?.name === "NotAllowedError") {
         message =
-          "Accesso alla fotocamera negato. Consenti l'accesso alla webcam nelle autorizzazioni del browser e riprova.";
+          "Accesso alla fotocamera negato. Consenti l'accesso alla fotocamera nelle impostazioni del browser.";
       } else if (error?.name === "NotFoundError") {
         message =
-          "Non è stata trovata nessuna fotocamera disponibile su questo dispositivo.";
+          "Non è stata trovata nessuna fotocamera disponibile.";
       } else if (error?.name === "NotReadableError") {
         message =
           "La fotocamera è già utilizzata da un'altra applicazione.";
+      } else if (error?.name === "OverconstrainedError") {
+        message =
+          "La fotocamera posteriore non è disponibile con questa configurazione.";
       } else if (error?.name === "SecurityError") {
         message =
           "Il browser ha bloccato l'accesso alla fotocamera per motivi di sicurezza.";
@@ -123,24 +189,33 @@ export default function DiagnosiAI() {
   function takePhoto() {
     const video = videoRef.current;
 
-    if (
-      !video ||
-      !cameraReady ||
-      !video.videoWidth ||
-      !video.videoHeight
-    ) {
+    if (!video || !video.videoWidth || !video.videoHeight) {
       setCameraError(
-        "La fotocamera non è ancora pronta. Attendi un momento."
+        "La fotocamera non ha ancora fornito un'immagine. Attendi un momento."
       );
       return;
     }
 
-    const canvas = document.createElement("canvas");
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      setCameraError(
+        "Impossibile preparare la fotografia."
+      );
+      return;
+    }
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
     const context = canvas.getContext("2d");
+
+    if (!context) {
+      setCameraError(
+        "Impossibile acquisire la fotografia."
+      );
+      return;
+    }
 
     context.drawImage(
       video,
@@ -162,11 +237,20 @@ export default function DiagnosiAI() {
         const file = new File(
           [blob],
           `diagnosi-${Date.now()}.jpg`,
-          { type: "image/jpeg" }
+          {
+            type: "image/jpeg",
+          }
         );
 
+        if (photoPreview) {
+          URL.revokeObjectURL(photoPreview);
+        }
+
         setPhoto(file);
-        setPhotoPreview(URL.createObjectURL(file));
+        setPhotoPreview(
+          URL.createObjectURL(file)
+        );
+
         stopCamera();
       },
       "image/jpeg",
@@ -178,13 +262,14 @@ export default function DiagnosiAI() {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setCameraError("Seleziona un'immagine valida.");
+      setCameraError(
+        "Seleziona un'immagine valida."
+      );
       return;
     }
 
     setCameraError("");
     setDiagnosis("");
-    setCameraReady(false);
     stopCamera();
 
     if (photoPreview) {
@@ -192,7 +277,9 @@ export default function DiagnosiAI() {
     }
 
     setPhoto(file);
-    setPhotoPreview(URL.createObjectURL(file));
+    setPhotoPreview(
+      URL.createObjectURL(file)
+    );
   }
 
   function handleFileInput(event) {
@@ -220,18 +307,24 @@ export default function DiagnosiAI() {
 
     try {
       const formData = new FormData();
+
       formData.append("image", photo);
 
-      const response = await fetch("/api/diagnosi-ai", {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetch(
+        "/api/diagnosi-ai",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
 
-      const result = await response.json();
+      const result =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
-          result.error || "Errore durante l'analisi."
+          result.error ||
+            "Errore durante l'analisi."
         );
       }
 
@@ -244,7 +337,8 @@ export default function DiagnosiAI() {
       console.error(error);
 
       setCameraError(
-        error.message || "Errore durante l'analisi."
+        error.message ||
+          "Errore durante l'analisi."
       );
     } finally {
       setLoading(false);
@@ -257,7 +351,8 @@ export default function DiagnosiAI() {
         minHeight: "100vh",
         background: "#f4f6f1",
         color: "#263126",
-        fontFamily: "Arial, Helvetica, sans-serif",
+        fontFamily:
+          "Arial, Helvetica, sans-serif",
         padding: "28px 20px 45px",
       }}
     >
@@ -290,7 +385,8 @@ export default function DiagnosiAI() {
             padding: 28,
             borderRadius: 24,
             background: "#f5f1df",
-            border: "1px solid #e9e1c6",
+            border:
+              "1px solid #e9e1c6",
           }}
         >
           <div
@@ -321,10 +417,13 @@ export default function DiagnosiAI() {
               margin: 0,
             }}
           >
-            Scatta una fotografia oppure caricane una
-            esistente. L'intelligenza artificiale analizzerà
-            l'immagine per individuare possibili patologie,
-            parassiti o altri problemi della pianta.
+            Scatta una fotografia oppure
+            caricane una esistente.
+            L'intelligenza artificiale
+            analizzerà l'immagine per
+            individuare possibili patologie,
+            parassiti o altri problemi della
+            pianta.
           </p>
         </section>
 
@@ -343,7 +442,8 @@ export default function DiagnosiAI() {
               style={{
                 minHeight: 190,
                 borderRadius: 24,
-                border: "1px solid #d8e6d2",
+                border:
+                  "1px solid #d8e6d2",
                 background: "#e9f1e5",
                 color: "#354d3b",
                 cursor: "pointer",
@@ -354,12 +454,20 @@ export default function DiagnosiAI() {
                 gap: 9,
               }}
             >
-              <span style={{ fontSize: 48 }}>📷</span>
-              <strong style={{ fontSize: 18 }}>
+              <span
+                style={{ fontSize: 48 }}
+              >
+                📷
+              </span>
+
+              <strong
+                style={{ fontSize: 18 }}
+              >
                 Scatta una foto
               </strong>
+
               <small>
-                Usa la fotocamera del dispositivo
+                Usa la fotocamera posteriore
               </small>
             </button>
 
@@ -370,7 +478,8 @@ export default function DiagnosiAI() {
               style={{
                 minHeight: 190,
                 borderRadius: 24,
-                border: "1px solid #d5e5ea",
+                border:
+                  "1px solid #d5e5ea",
                 background: "#e9f2f5",
                 color: "#354d3b",
                 cursor: "pointer",
@@ -381,10 +490,18 @@ export default function DiagnosiAI() {
                 gap: 9,
               }}
             >
-              <span style={{ fontSize: 48 }}>🖼️</span>
-              <strong style={{ fontSize: 18 }}>
+              <span
+                style={{ fontSize: 48 }}
+              >
+                🖼️
+              </span>
+
+              <strong
+                style={{ fontSize: 18 }}
+              >
                 Carica una foto
               </strong>
+
               <small>
                 Scegli un'immagine dal dispositivo
               </small>
@@ -407,10 +524,15 @@ export default function DiagnosiAI() {
               padding: 20,
               borderRadius: 24,
               background: "#fffdf8",
-              border: "1px solid #e8dfcf",
+              border:
+                "1px solid #e8dfcf",
             }}
           >
-            <h2 style={{ color: "#354d3b" }}>
+            <h2
+              style={{
+                color: "#354d3b",
+              }}
+            >
               Inquadra la parte della pianta
             </h2>
 
@@ -438,10 +560,31 @@ export default function DiagnosiAI() {
               />
             </div>
 
+            <canvas
+              ref={canvasRef}
+              style={{
+                display: "none",
+              }}
+            />
+
+            <div
+              style={{
+                textAlign: "center",
+                marginTop: 12,
+                color: "#687168",
+                fontSize: 13,
+              }}
+            >
+              {cameraReady
+                ? "📷 Fotocamera posteriore pronta"
+                : "⏳ Avvio fotocamera..."}
+            </div>
+
             <div
               style={{
                 display: "flex",
-                justifyContent: "center",
+                justifyContent:
+                  "center",
                 gap: 12,
                 marginTop: 18,
                 flexWrap: "wrap",
@@ -454,25 +597,34 @@ export default function DiagnosiAI() {
                   width: 72,
                   height: 72,
                   borderRadius: "50%",
-                  border: "6px solid white",
+                  border:
+                    "6px solid white",
                   background: "#354d3b",
                   color: "white",
-                  cursor: cameraReady ? "pointer" : "wait",
+                  cursor:
+                    cameraReady
+                      ? "pointer"
+                      : "wait",
                   fontSize: 28,
-                  opacity: cameraReady ? 1 : 0.5,
+                  opacity:
+                    cameraReady ? 1 : 0.5,
                 }}
               >
-                {cameraReady ? "📷" : "⏳"}
+                {cameraReady
+                  ? "📷"
+                  : "⏳"}
               </button>
 
               <button
                 onClick={stopCamera}
                 style={{
-                  border: "1px solid #d9e0d5",
+                  border:
+                    "1px solid #d9e0d5",
                   background: "#f7f8f4",
                   color: "#354d3b",
                   borderRadius: 13,
-                  padding: "12px 18px",
+                  padding:
+                    "12px 18px",
                   cursor: "pointer",
                   fontWeight: 700,
                 }}
@@ -490,10 +642,15 @@ export default function DiagnosiAI() {
               padding: 20,
               borderRadius: 24,
               background: "#fffdf8",
-              border: "1px solid #e8dfcf",
+              border:
+                "1px solid #e8dfcf",
             }}
           >
-            <h2 style={{ color: "#354d3b" }}>
+            <h2
+              style={{
+                color: "#354d3b",
+              }}
+            >
               Fotografia pronta
             </h2>
 
@@ -513,7 +670,8 @@ export default function DiagnosiAI() {
             <div
               style={{
                 display: "flex",
-                justifyContent: "center",
+                justifyContent:
+                  "center",
                 gap: 12,
                 flexWrap: "wrap",
                 marginTop: 18,
@@ -522,11 +680,13 @@ export default function DiagnosiAI() {
               <button
                 onClick={removePhoto}
                 style={{
-                  border: "1px solid #d9e0d5",
+                  border:
+                    "1px solid #d9e0d5",
                   background: "#f7f8f4",
                   color: "#354d3b",
                   borderRadius: 13,
-                  padding: "12px 16px",
+                  padding:
+                    "12px 16px",
                   cursor: "pointer",
                   fontWeight: 700,
                 }}
@@ -538,16 +698,19 @@ export default function DiagnosiAI() {
                 onClick={analyzePhoto}
                 disabled={loading}
                 style={{
-                  border: "1px solid #c7d9c0",
+                  border:
+                    "1px solid #c7d9c0",
                   background: "#354d3b",
                   color: "white",
                   borderRadius: 13,
-                  padding: "12px 18px",
+                  padding:
+                    "12px 18px",
                   cursor: loading
                     ? "wait"
                     : "pointer",
                   fontWeight: 700,
-                  opacity: loading ? 0.6 : 1,
+                  opacity:
+                    loading ? 0.6 : 1,
                 }}
               >
                 {loading
@@ -573,7 +736,8 @@ export default function DiagnosiAI() {
               padding: 15,
               borderRadius: 14,
               background: "#fff0ed",
-              border: "1px solid #efd0c8",
+              border:
+                "1px solid #efd0c8",
               color: "#8b4338",
               lineHeight: 1.5,
             }}
@@ -589,7 +753,8 @@ export default function DiagnosiAI() {
               padding: 24,
               borderRadius: 24,
               background: "#fffdf8",
-              border: "1px solid #d8e6d2",
+              border:
+                "1px solid #d8e6d2",
             }}
           >
             <div
@@ -603,13 +768,18 @@ export default function DiagnosiAI() {
               RISULTATO DELL'ANALISI
             </div>
 
-            <h2 style={{ color: "#354d3b" }}>
+            <h2
+              style={{
+                color: "#354d3b",
+              }}
+            >
               🤖 Diagnosi AI
             </h2>
 
             <div
               style={{
-                whiteSpace: "pre-wrap",
+                whiteSpace:
+                  "pre-wrap",
                 lineHeight: 1.7,
                 color: "#3d473f",
               }}
@@ -628,9 +798,11 @@ export default function DiagnosiAI() {
                 lineHeight: 1.5,
               }}
             >
-              🌱 <strong>Nota:</strong> la diagnosi è
-              generata dall'intelligenza artificiale ed è
-              un'indicazione orientativa.
+              🌱 <strong>Nota:</strong>{" "}
+              la diagnosi è generata
+              dall'intelligenza artificiale
+              ed è un'indicazione
+              orientativa.
             </div>
           </section>
         )}
@@ -639,7 +811,8 @@ export default function DiagnosiAI() {
           style={{
             marginTop: 35,
             paddingTop: 20,
-            borderTop: "1px solid #dde2d9",
+            borderTop:
+              "1px solid #dde2d9",
             color: "#7b837c",
             fontSize: 12,
             textAlign: "center",
