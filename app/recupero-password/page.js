@@ -12,23 +12,85 @@ export default function RecuperoPasswordPage() {
   const [confermaPassword, setConfermaPassword] = useState("");
 
   const [recoveryMode, setRecoveryMode] = useState(false);
+  const [checkingRecovery, setCheckingRecovery] = useState(true);
   const [loading, setLoading] = useState(false);
 
   const [messaggio, setMessaggio] = useState("");
   const [errore, setErrore] = useState("");
 
   useEffect(() => {
+    let mounted = true;
+
+    const inizializzaRecupero = async () => {
+      try {
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
+
+        // Flusso PKCE:
+        // Supabase rimanda alla nostra pagina con ?code=...
+        // Dobbiamo scambiare il codice per una sessione.
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+          if (error) {
+            if (mounted) {
+              setErrore(
+                "Il link di recupero non è valido oppure è scaduto. Richiedi una nuova email."
+              );
+            }
+
+            return;
+          }
+
+          // Rimuoviamo il codice dall'indirizzo del browser.
+          window.history.replaceState(
+            {},
+            document.title,
+            "/recupero-password"
+          );
+
+          if (mounted) {
+            setRecoveryMode(true);
+            setErrore("");
+            setMessaggio("");
+          }
+
+          return;
+        }
+
+        // Gestisce il normale evento PASSWORD_RECOVERY
+        // quando Supabase completa automaticamente il recupero.
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session && mounted) {
+          setRecoveryMode(true);
+        }
+      } finally {
+        if (mounted) {
+          setCheckingRecovery(false);
+        }
+      }
+    };
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
-        setRecoveryMode(true);
-        setErrore("");
-        setMessaggio("");
+        if (mounted) {
+          setRecoveryMode(true);
+          setErrore("");
+          setMessaggio("");
+          setCheckingRecovery(false);
+        }
       }
     });
 
+    inizializzaRecupero();
+
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, [supabase]);
@@ -91,6 +153,7 @@ export default function RecuperoPasswordPage() {
 
     setPassword("");
     setConfermaPassword("");
+
     setMessaggio(
       "Password aggiornata correttamente! Ora puoi accedere con la nuova password."
     );
@@ -99,6 +162,24 @@ export default function RecuperoPasswordPage() {
 
     await supabase.auth.signOut();
   };
+
+  if (checkingRecovery) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#f4f6f1",
+          fontFamily: "Arial, Helvetica, sans-serif",
+          color: "#354d3b",
+        }}
+      >
+        Verifica del link di recupero...
+      </main>
+    );
+  }
 
   return (
     <main
@@ -180,16 +261,10 @@ export default function RecuperoPasswordPage() {
               />
             </label>
 
-            {errore && (
-              <div style={errorStyle}>
-                {errore}
-              </div>
-            )}
+            {errore && <div style={errorStyle}>{errore}</div>}
 
             {messaggio && (
-              <div style={successStyle}>
-                {messaggio}
-              </div>
+              <div style={successStyle}>{messaggio}</div>
             )}
 
             <button
@@ -200,10 +275,7 @@ export default function RecuperoPasswordPage() {
               {loading ? "Invio..." : "Invia link di recupero"}
             </button>
 
-            <Link
-              href="/login"
-              style={backLinkStyle}
-            >
+            <Link href="/login" style={backLinkStyle}>
               ← Torna al login
             </Link>
           </form>
@@ -253,16 +325,10 @@ export default function RecuperoPasswordPage() {
               />
             </label>
 
-            {errore && (
-              <div style={errorStyle}>
-                {errore}
-              </div>
-            )}
+            {errore && <div style={errorStyle}>{errore}</div>}
 
             {messaggio && (
-              <div style={successStyle}>
-                {messaggio}
-              </div>
+              <div style={successStyle}>{messaggio}</div>
             )}
 
             <button
@@ -274,10 +340,7 @@ export default function RecuperoPasswordPage() {
             </button>
 
             {messaggio && (
-              <Link
-                href="/login"
-                style={backLinkStyle}
-              >
+              <Link href="/login" style={backLinkStyle}>
                 Torna al login
               </Link>
             )}
