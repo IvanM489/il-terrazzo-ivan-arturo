@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "../../lib/supabase/client";
 
 function LoginForm() {
@@ -122,6 +123,25 @@ function LoginForm() {
               style={inputStyle}
             />
           </label>
+
+          <div
+            style={{
+              textAlign: "right",
+              marginTop: "-5px",
+            }}
+          >
+            <Link
+              href="/recupero-password"
+              style={{
+                color: "#55745b",
+                fontSize: "14px",
+                textDecoration: "none",
+                fontWeight: "600",
+              }}
+            >
+              Hai dimenticato la password?
+            </Link>
+          </div>
 
           {errore && (
             <div
