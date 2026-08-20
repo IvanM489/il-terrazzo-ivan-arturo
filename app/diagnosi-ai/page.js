@@ -45,7 +45,6 @@ export default function DiagnosiAI() {
 
   async function startCamera() {
     setCameraError("");
-    setDiagnosis("");
     setCameraReady(false);
 
     if (!window.isSecureContext) {
@@ -65,108 +64,42 @@ export default function DiagnosiAI() {
     try {
       stopCamera();
 
+      // Su iPhone/Safari è più affidabile chiedere inizialmente
+      // una fotocamera generica e poi selezionare quella posteriore.
       let stream;
 
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode: {
-              exact: "environment",
-            },
-            width: {
-              ideal: 1920,
-            },
-            height: {
-              ideal: 1080,
-            },
+            facingMode: "environment",
           },
           audio: false,
         });
-      } catch (rearError) {
-        console.warn(
-          "Fotocamera posteriore exact non disponibile:",
-          rearError
-        );
+      } catch (firstError) {
+        console.error("Tentativo fotocamera posteriore fallito:", firstError);
 
+        // Fallback: richiesta generica della fotocamera.
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "environment",
-            width: {
-              ideal: 1920,
-            },
-            height: {
-              ideal: 1080,
-            },
-          },
+          video: true,
           audio: false,
         });
       }
 
       streamRef.current = stream;
 
-      const video = videoRef.current;
-
+      // IMPORTANTE:
+      // prima montiamo il pannello camera, poi un useEffect
+      // collegherà lo stream al video.
       setCameraOpen(true);
 
-      if (!video) {
-        throw new Error(
-          "Elemento video non disponibile."
-        );
-      }
-
-      video.srcObject = stream;
-      video.setAttribute("playsinline", "");
-      video.setAttribute("autoplay", "");
-      video.muted = true;
-
-      const ready = () => {
-        if (
-          video.readyState >= 2 &&
-          video.videoWidth > 0 &&
-          video.videoHeight > 0
-        ) {
-          setCameraReady(true);
-        }
-      };
-
-      video.onloadedmetadata = ready;
-      video.onloadeddata = ready;
-      video.oncanplay = ready;
-      video.onplaying = ready;
-
-      try {
-        await video.play();
-      } catch (playError) {
-        console.warn(
-          "video.play() non riuscito immediatamente:",
-          playError
-        );
-      }
-
-      ready();
-
-      const timeout = setTimeout(() => {
-        if (
-          video.videoWidth > 0 &&
-          video.videoHeight > 0
-        ) {
-          setCameraReady(true);
-        }
-      }, 1200);
-
-      setTimeout(() => clearTimeout(timeout), 2000);
     } catch (error) {
-      console.error(
-        "Errore fotocamera:",
-        error
-      );
+      console.error("Errore fotocamera:", error);
 
-      let message =
-        "Impossibile inizializzare la fotocamera.";
+      let message = "Impossibile inizializzare la fotocamera.";
 
       if (error?.name === "NotAllowedError") {
         message =
-          "Accesso alla fotocamera negato. Consenti l'accesso alla fotocamera nelle impostazioni del browser.";
+          "Accesso alla fotocamera negato. Su iPhone vai in Impostazioni → Safari → Fotocamera e consenti l'accesso per questo sito.";
       } else if (error?.name === "NotFoundError") {
         message =
           "Non è stata trovata nessuna fotocamera disponibile.";
@@ -175,16 +108,61 @@ export default function DiagnosiAI() {
           "La fotocamera è già utilizzata da un'altra applicazione.";
       } else if (error?.name === "OverconstrainedError") {
         message =
-          "La fotocamera posteriore non è disponibile con questa configurazione.";
+          "La fotocamera posteriore non è disponibile con queste impostazioni. Riprova.";
       } else if (error?.name === "SecurityError") {
         message =
-          "Il browser ha bloccato l'accesso alla fotocamera per motivi di sicurezza.";
+          "Safari ha bloccato l'accesso alla fotocamera per motivi di sicurezza.";
       }
 
       setCameraError(message);
       stopCamera();
     }
   }
+
+  useEffect(() => {
+    if (!cameraOpen) return;
+
+    const video = videoRef.current;
+    const stream = streamRef.current;
+
+    if (!video || !stream) return;
+
+    video.srcObject = stream;
+
+    const markReady = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        setCameraReady(true);
+      }
+    };
+
+    video.onloadedmetadata = async () => {
+      try {
+        await video.play();
+        markReady();
+      } catch (error) {
+        console.error("Errore avvio video:", error);
+      }
+    };
+
+    video.oncanplay = markReady;
+    video.onplaying = markReady;
+
+    const timer = setTimeout(async () => {
+      try {
+        await video.play();
+        markReady();
+      } catch (error) {
+        console.error("Errore play video:", error);
+      }
+    }, 150);
+
+    return () => {
+      clearTimeout(timer);
+      video.onloadedmetadata = null;
+      video.oncanplay = null;
+      video.onplaying = null;
+    };
+  }, [cameraOpen]);
 
   function takePhoto() {
     const video = videoRef.current;
