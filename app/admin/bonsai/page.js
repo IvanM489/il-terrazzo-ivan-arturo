@@ -31,6 +31,7 @@ export default function BonsaiAdminPage() {
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function loadBonsai() {
@@ -101,6 +102,68 @@ export default function BonsaiAdminPage() {
     setEditingId(null);
     setForm({ ...emptyBonsai });
     setError("");
+  }
+
+
+  async function fillWithAI(file) {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Seleziona una fotografia valida.");
+      return;
+    }
+
+    setAiLoading(true);
+    setError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      formData.append("plantType", "bonsai");
+
+      const response = await fetch("/api/admin/ai-plant", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error || "Errore durante il riconoscimento."
+        );
+      }
+
+      if (!result.plant) {
+        throw new Error(
+          "L'AI non ha restituito una scheda valida."
+        );
+      }
+
+      setForm((current) => ({
+        ...current,
+        ...result.plant,
+      }));
+    } catch (error) {
+      console.error("Errore compilazione AI:", error);
+
+      setError(
+        error.message ||
+          "Errore durante il riconoscimento della pianta."
+      );
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  function handleAIFile(event) {
+    const file = event.target.files?.[0];
+
+    if (file) {
+      fillWithAI(file);
+    }
+
+    event.target.value = "";
   }
 
   async function saveBonsai(event) {
@@ -203,15 +266,45 @@ export default function BonsaiAdminPage() {
               </h2>
             </div>
 
-            {editingId && (
-              <button
-                type="button"
-                className="secondary"
-                onClick={resetForm}
-              >
-                Annulla modifica
-              </button>
-            )}
+            <div className="editorHeaderActions">
+              {!editingId && (
+                <>
+                  <button
+                    type="button"
+                    className="aiButton"
+                    onClick={() =>
+                      document
+                        .getElementById("aiPlantPhoto")
+                        ?.click()
+                    }
+                    disabled={aiLoading}
+                  >
+                    {aiLoading
+                      ? "🤖 Analisi in corso..."
+                      : "📷 Compila con AI"}
+                  </button>
+
+                  <input
+                    id="aiPlantPhoto"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleAIFile}
+                    hidden
+                  />
+                </>
+              )}
+
+              {editingId && (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={resetForm}
+                >
+                  Annulla modifica
+                </button>
+              )}
+            </div>
           </div>
 
           <form onSubmit={saveBonsai}>
@@ -580,6 +673,32 @@ export default function BonsaiAdminPage() {
 
         .primary:disabled {
           opacity: 0.6;
+        }
+
+        .editorHeaderActions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .aiButton {
+          border: 1px solid #c7d9c0;
+          background: #e9f1e5;
+          color: #354d3b;
+          border-radius: 12px;
+          padding: 11px 15px;
+          cursor: pointer;
+          font-weight: 800;
+        }
+
+        .aiButton:hover {
+          background: #dfeadb;
+        }
+
+        .aiButton:disabled {
+          opacity: 0.6;
+          cursor: wait;
         }
 
         .secondary {

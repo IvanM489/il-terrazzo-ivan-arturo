@@ -43,10 +43,22 @@ export async function POST(request) {
 
     const formData = await request.formData();
     const image = formData.get("image");
+    const plantType = formData.get("plantType");
 
     if (!image || typeof image === "string") {
       return Response.json(
         { error: "Nessuna fotografia ricevuta." },
+        { status: 400 }
+      );
+    }
+
+    if (
+      !["plants", "indoor_plants", "bonsai"].includes(
+        plantType
+      )
+    ) {
+      return Response.json(
+        { error: "Tipo di pianta non valido." },
         { status: 400 }
       );
     }
@@ -57,6 +69,31 @@ export async function POST(request) {
 
     const mimeType =
       image.type || "image/jpeg";
+
+    let categoryInstruction;
+
+    if (plantType === "plants") {
+      categoryInstruction = `
+"category":
+Deve essere ESATTAMENTE una di queste:
+- Sempreverde
+- Fiorita
+- Rampicante
+- Albero ornamentale
+- Arbusto
+- Erbacea
+`;
+    } else if (plantType === "indoor_plants") {
+      categoryInstruction = `
+"category":
+La categoria deve essere "Pianta da interno".
+`;
+    } else {
+      categoryInstruction = `
+"category":
+La categoria deve essere "Bonsai".
+`;
+    }
 
     const client = new OpenAI({
       apiKey,
@@ -73,9 +110,11 @@ export async function POST(request) {
               text: `
 Sei un esperto botanico incaricato di compilare una scheda pianta.
 
-Analizza attentamente la fotografia e restituisci SOLO un JSON valido, senza markdown e senza testo aggiuntivo.
+Analizza attentamente la fotografia.
 
-Devi compilare questi campi:
+Restituisci SOLO un JSON valido, senza markdown e senza testo aggiuntivo.
+
+Il JSON deve contenere ESATTAMENTE questi campi:
 
 {
   "name": "",
@@ -94,22 +133,15 @@ Devi compilare questi campi:
 REGOLE:
 
 "name":
-Nome comune della pianta. Se possibile usa il nome italiano più comune.
+Nome comune della pianta.
 
 "scientific":
 Nome scientifico, se identificabile.
 
 "icon":
-Una sola emoji appropriata alla pianta.
+Una sola emoji appropriata.
 
-"category":
-Deve essere ESATTAMENTE una di queste:
-- Sempreverde
-- Fiorita
-- Rampicante
-- Albero ornamentale
-- Arbusto
-- Erbacea
+${categoryInstruction}
 
 "exposure":
 Indicazione pratica dell'esposizione consigliata.
@@ -124,7 +156,7 @@ Indicazione pratica sulla concimazione.
 Indicazione pratica sulla potatura.
 
 "problems":
-Principali problemi, patologie o parassiti comuni della specie.
+Principali problemi, patologie o parassiti comuni.
 
 "pruning_season":
 Array contenente SOLO valori tra:
@@ -143,11 +175,11 @@ Array contenente SOLO valori tra:
 - inverno
 
 IMPORTANTE:
-- Non inventare caratteristiche se la specie non è riconoscibile.
-- Se il riconoscimento non è sicuro, usa il nome più probabile e fornisci comunque una scheda prudente.
-- Le informazioni devono essere utili per una scheda di gestione domestica della pianta.
-- Non aggiungere campi oltre quelli richiesti.
-- Restituisci JSON valido.
+- Non inventare dettagli inutilmente.
+- Se la specie non è identificabile con certezza, usa la migliore identificazione possibile.
+- Le informazioni devono essere pratiche e adatte alla gestione domestica.
+- Non aggiungere altri campi.
+- Restituisci esclusivamente JSON valido.
               `.trim(),
             },
             {
@@ -164,7 +196,10 @@ IMPORTANTE:
 
     if (!text) {
       return Response.json(
-        { error: "L'AI non ha restituito informazioni." },
+        {
+          error:
+            "L'AI non ha restituito informazioni.",
+        },
         { status: 502 }
       );
     }
@@ -188,15 +223,6 @@ IMPORTANTE:
       );
     }
 
-    const validCategories = [
-      "Sempreverde",
-      "Fiorita",
-      "Rampicante",
-      "Albero ornamentale",
-      "Arbusto",
-      "Erbacea",
-    ];
-
     const validSeasons = [
       "fine inverno",
       "primavera",
@@ -205,41 +231,61 @@ IMPORTANTE:
       "inverno",
     ];
 
-    if (!validCategories.includes(plant.category)) {
-      plant.category = "Sempreverde";
+    let category = plant.category || "";
+
+    if (plantType === "indoor_plants") {
+      category = "Pianta da interno";
     }
 
-    plant.pruning_season = Array.isArray(
-      plant.pruning_season
-    )
-      ? plant.pruning_season.filter((season) =>
-          validSeasons.includes(season)
-        )
-      : [];
+    if (plantType === "bonsai") {
+      category = "Bonsai";
+    }
 
-    plant.fertilizer_season = Array.isArray(
-      plant.fertilizer_season
-    )
-      ? plant.fertilizer_season.filter((season) =>
-          validSeasons.includes(season)
-        )
-      : [];
+    if (plantType === "plants") {
+      const validCategories = [
+        "Sempreverde",
+        "Fiorita",
+        "Rampicante",
+        "Albero ornamentale",
+        "Arbusto",
+        "Erbacea",
+      ];
+
+      if (!validCategories.includes(category)) {
+        category = "Sempreverde";
+      }
+    }
+
+    const result = {
+      name: plant.name || "",
+      scientific: plant.scientific || "",
+      icon:
+        plant.icon ||
+        (plantType === "bonsai" ? "🌳" : "🪴"),
+      category,
+      exposure: plant.exposure || "",
+      water: plant.water || "",
+      fertilizer: plant.fertilizer || "",
+      pruning: plant.pruning || "",
+      problems: plant.problems || "",
+      pruning_season: Array.isArray(
+        plant.pruning_season
+      )
+        ? plant.pruning_season.filter((season) =>
+            validSeasons.includes(season)
+          )
+        : [],
+      fertilizer_season: Array.isArray(
+        plant.fertilizer_season
+      )
+        ? plant.fertilizer_season.filter((season) =>
+            validSeasons.includes(season)
+          )
+        : [],
+    };
 
     return Response.json({
-      plant: {
-        name: plant.name || "",
-        scientific: plant.scientific || "",
-        icon: plant.icon || "🌿",
-        category: plant.category || "Sempreverde",
-        exposure: plant.exposure || "",
-        water: plant.water || "",
-        fertilizer: plant.fertilizer || "",
-        pruning: plant.pruning || "",
-        problems: plant.problems || "",
-        pruning_season: plant.pruning_season,
-        fertilizer_season:
-          plant.fertilizer_season,
-      },
+      plant: result,
     });
   } catch (error) {
     console.error(
