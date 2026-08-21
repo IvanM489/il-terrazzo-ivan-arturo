@@ -31,7 +31,9 @@ export default function AdminPiantePage() {
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState("");
+  const [aiFileInputKey, setAiFileInputKey] = useState(0);
 
   async function loadPlants() {
     setLoading(true);
@@ -101,6 +103,75 @@ export default function AdminPiantePage() {
     setEditingId(null);
     setForm({ ...emptyPlant });
     setError("");
+  }
+
+  async function fillPlantWithAI(file) {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Seleziona una fotografia valida.");
+      return;
+    }
+
+    setAiLoading(true);
+    setError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+
+      const response = await fetch(
+        "/api/admin/ai-plant",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error ||
+            "Errore durante il riconoscimento."
+        );
+      }
+
+      if (!result.plant) {
+        throw new Error(
+          "L'AI non ha restituito una scheda valida."
+        );
+      }
+
+      setForm((current) => ({
+        ...current,
+        ...result.plant,
+      }));
+
+    } catch (error) {
+      console.error(
+        "Errore compilazione AI:",
+        error
+      );
+
+      setError(
+        error.message ||
+          "Errore durante il riconoscimento della pianta."
+      );
+    } finally {
+      setAiLoading(false);
+      setAiFileInputKey((key) => key + 1);
+    }
+  }
+
+  function handleAIFile(event) {
+    const file = event.target.files?.[0];
+
+    if (file) {
+      fillPlantWithAI(file);
+    }
+
+    event.target.value = "";
   }
 
   async function savePlant(event) {
@@ -202,16 +273,56 @@ export default function AdminPiantePage() {
               </h2>
             </div>
 
-            {editingId && (
-              <button
-                type="button"
-                className="secondary"
-                onClick={resetForm}
-              >
-                Annulla modifica
-              </button>
-            )}
+            <div className="editorHeaderActions">
+              {!editingId && (
+                <>
+                  <button
+                    type="button"
+                    className="aiButton"
+                    onClick={() =>
+                      document
+                        .getElementById("aiPlantPhoto")
+                        ?.click()
+                    }
+                    disabled={aiLoading}
+                  >
+                    {aiLoading
+                      ? "🤖 Analisi in corso..."
+                      : "📷 Compila con AI"}
+                  </button>
+
+                  <input
+                    key={aiFileInputKey}
+                    id="aiPlantPhoto"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleAIFile}
+                    hidden
+                  />
+                </>
+              )}
+
+              {editingId && (
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={resetForm}
+                >
+                  Annulla modifica
+                </button>
+              )}
+            </div>
           </div>
+
+          {!editingId && (
+            <div className="aiHint">
+              🤖 <strong>Compila con AI:</strong>{" "}
+              fotografa la pianta e l'intelligenza artificiale
+              compilerà automaticamente i campi. Potrai
+              controllare e modificare tutto prima di salvare.
+            </div>
+          )}
 
           <form onSubmit={savePlant}>
             <div className="grid">
@@ -596,6 +707,43 @@ export default function AdminPiantePage() {
         .primary:disabled {
           opacity: 0.6;
           cursor: default;
+        }
+
+        .editorHeaderActions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .aiButton {
+          border: 1px solid #c7d9c0;
+          background: #e9f1e5;
+          color: #354d3b;
+          border-radius: 12px;
+          padding: 11px 15px;
+          cursor: pointer;
+          font-weight: 800;
+        }
+
+        .aiButton:hover {
+          background: #dfeadb;
+        }
+
+        .aiButton:disabled {
+          opacity: 0.6;
+          cursor: wait;
+        }
+
+        .aiHint {
+          margin-bottom: 20px;
+          padding: 14px 16px;
+          border-radius: 14px;
+          background: #f1f6ef;
+          border: 1px solid #d8e6d2;
+          color: #55745b;
+          line-height: 1.5;
+          font-size: 13px;
         }
 
         .secondary {
