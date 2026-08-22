@@ -258,33 +258,36 @@ IMPORTANTE:
     });
 
     if (noteBlockMatch) {
-      const block = noteBlockMatch[1];
+  const block = noteBlockMatch[1];
 
-      const plantMatch = block.match(
-        /PIANTA:\s*(.+)/i
-      );
+  const plantMatch = block.match(
+    /PIANTA:\s*(.+?)(?=\n|$)/i
+  );
 
-      const diagnosisMatch = block.match(
-        /DIAGNOSI_BREVE:\s*(.+)/i
-      );
+  const diagnosisMatch = block.match(
+    /DIAGNOSI_BREVE:\s*(.+?)(?=\n|$)/i
+  );
 
-     const actionMatch = block.match(
-  /AZIONE_BREVE:\s*([\s\S]*?)(?=\nCONFIDENZA_PIANTA:|$)/i
-);
+  const confidenceMatch = block.match(
+    /CONFIDENZA_PIANTA:\s*(ALTA|MEDIA|BASSA)/i
+  );
 
-actionShort =
-  actionMatch?.[1]?.trim() || "";
+  const actionMatch = block.match(
+    /AZIONE_BREVE:\s*([\s\S]*?)(?=\n\s*CONFIDENZA_PIANTA\s*:|$)/i
+  );
 
-      const confidenceMatch = block.match(
-        /CONFIDENZA_PIANTA:\s*(ALTA|MEDIA|BASSA)/i
-      );
+  plantName =
+    plantMatch?.[1]?.trim() || "";
 
-      plantName = plantMatch?.[1]?.trim() || "";
-      diagnosisShort =
-        diagnosisMatch?.[1]?.trim() || "";
-      plantConfidence =
-        confidenceMatch?.[1]?.trim().toUpperCase() || "BASSA";
-    }
+  diagnosisShort =
+    diagnosisMatch?.[1]?.trim() || "";
+
+  actionShort =
+    actionMatch?.[1]?.trim() || "";
+
+  plantConfidence =
+    confidenceMatch?.[1]?.trim().toUpperCase() || "BASSA";
+}
 
     /*
      * La parte tecnica utilizzata per la nota non viene
