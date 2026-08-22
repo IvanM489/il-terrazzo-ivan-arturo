@@ -50,6 +50,7 @@ const sections = [
 
 export default function Home() {
   const [welcome, setWelcome] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [showTasks, setShowTasks] = useState(true);
   const [completedTasks, setCompletedTasks] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -225,46 +226,65 @@ export default function Home() {
           </div>
 
           <div className="headerActions">
-            {!loadingUser && isAdmin && (
+            <div className="accountMenu">
               <button
-                className="adminButton"
-                onClick={() => {
-                  window.location.href = "/admin";
-                }}
-                aria-label="Amministrazione"
+                className="accountButton"
+                onClick={() => setMenuOpen(!menuOpen)}
+                aria-label="Apri menu account"
+                aria-expanded={menuOpen}
               >
-                ⚙️ Admin
+                👤 Account
+                <span className={`accountChevron ${menuOpen ? "open" : ""}`}>
+                  ▾
+                </span>
               </button>
-            )}
 
-            <button
-              className="profile"
-              onClick={() => setWelcome(!welcome)}
-              aria-label="Mostra benvenuto"
-              title="Mostra benvenuto"
-            >
-              I&A
-            </button>
+              {menuOpen && (
+                <>
+                  <button
+                    className="menuBackdrop"
+                    aria-label="Chiudi menu"
+                    onClick={() => setMenuOpen(false)}
+                  />
 
-            <button
-              className="profileButton"
-              onClick={() => {
-                window.location.href = "/profilo";
-              }}
-              aria-label="Profilo"
-              title="Profilo"
-            >
-              👤 Profilo
-            </button>
+                  <div className="accountDropdown">
+                    <button
+                      className="accountItem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        window.location.href = "/profilo";
+                      }}
+                    >
+                      <span>👤</span>
+                      <span>Profilo</span>
+                    </button>
 
-            <button
-              className="logoutButton"
-              onClick={logout}
-              aria-label="Esci"
-              title="Esci"
-            >
-              ↪
-            </button>
+                    {!loadingUser && isAdmin && (
+                      <button
+                        className="accountItem"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          window.location.href = "/admin";
+                        }}
+                      >
+                        <span>⚙️</span>
+                        <span>Amministrazione</span>
+                      </button>
+                    )}
+
+                    <div className="accountDivider" />
+
+                    <button
+                      className="accountItem logoutItem"
+                      onClick={logout}
+                    >
+                      <span>↪</span>
+                      <span>Esci</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </header>
 
@@ -517,6 +537,101 @@ export default function Home() {
         .profile:hover,
         .profileButton:hover {
           background: #edf3e9;
+        }
+
+        .accountMenu {
+          position: relative;
+        }
+
+        .accountButton {
+          height: 48px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          border: 1px solid #d9e0d5;
+          background: #fffdf8;
+          color: #354d3b;
+          border-radius: 14px;
+          padding: 0 14px;
+          cursor: pointer;
+          font-weight: 700;
+          white-space: nowrap;
+          transition: background 0.15s ease;
+        }
+
+        .accountButton:hover {
+          background: #edf3e9;
+        }
+
+        .accountChevron {
+          display: inline-block;
+          font-size: 16px;
+          transition: transform 0.15s ease;
+        }
+
+        .accountChevron.open {
+          transform: rotate(180deg);
+        }
+
+        .menuBackdrop {
+          position: fixed;
+          inset: 0;
+          z-index: 90;
+          border: none;
+          background: transparent;
+          cursor: default;
+        }
+
+        .accountDropdown {
+          position: absolute;
+          top: calc(100% + 9px);
+          right: 0;
+          z-index: 100;
+          width: 215px;
+          padding: 8px;
+          background: #fffdf8;
+          border: 1px solid #e0e4dc;
+          border-radius: 17px;
+          box-shadow: 0 12px 30px rgba(50, 70, 50, 0.14);
+        }
+
+        .accountItem {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          gap: 11px;
+          border: none;
+          background: transparent;
+          color: #354d3b;
+          border-radius: 11px;
+          padding: 11px 12px;
+          cursor: pointer;
+          text-align: left;
+          font-weight: 700;
+        }
+
+        .accountItem:hover {
+          background: #edf3e9;
+        }
+
+        .accountItem span:first-child {
+          width: 22px;
+          text-align: center;
+          font-size: 17px;
+        }
+
+        .accountDivider {
+          height: 1px;
+          margin: 7px 5px;
+          background: #e6e9e3;
+        }
+
+        .logoutItem {
+          color: #7d5149;
+        }
+
+        .logoutItem:hover {
+          background: #f8eeeb;
         }
 
         .welcome {
@@ -835,22 +950,18 @@ export default function Home() {
           }
 
           .headerActions {
-            flex-wrap: wrap;
-            justify-content: flex-end;
+            flex-shrink: 0;
           }
 
-          .profileButton {
-            font-size: 13px;
+          .accountButton {
+            height: 44px;
             padding: 0 11px;
+            font-size: 13px;
           }
 
-          .adminButton {
-            font-size: 0;
-            padding: 12px;
-          }
-
-          .adminButton::first-letter {
-            font-size: 18px;
+          .accountDropdown {
+            right: 0;
+            width: 205px;
           }
 
           .welcome {
