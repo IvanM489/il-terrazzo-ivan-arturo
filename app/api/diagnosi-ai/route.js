@@ -33,8 +33,18 @@ function normalize(value) {
     .trim();
 }
 
+function normalizePlantName(value) {
+  return normalize(value)
+    .replace(/\([^)]*\)/g, "")
+    .replace(/['"’]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function findBestPlantMatch(plants, aiPlantName) {
   const target = normalize(aiPlantName);
+  const targetWithoutParentheses =
+    normalizePlantName(aiPlantName);
 
   if (!target) return null;
 
@@ -45,18 +55,56 @@ function findBestPlantMatch(plants, aiPlantName) {
 
   if (exact) return exact;
 
-  // 2. Il nome AI contiene il nome presente nel database
+  // 2. Corrispondenza ignorando il contenuto tra parentesi.
+  // Esempio:
+  // "Melo ornamentale (Malus)"
+  // "Melo ornamentale (crabapple)"
+  // diventano entrambi "melo ornamentale".
+  const withoutParentheses = plants.find(
+    (plant) =>
+      normalizePlantName(plant.name) ===
+      targetWithoutParentheses
+  );
+
+  if (withoutParentheses) return withoutParentheses;
+
+  // 3. Il nome AI contiene il nome presente nel database
   const contained = plants
     .filter((plant) => {
       const name = normalize(plant.name);
-      return name && (target.includes(name) || name.includes(target));
+
+      return (
+        name &&
+        (target.includes(name) ||
+          name.includes(target))
+      );
     })
     .sort(
       (a, b) =>
-        normalize(b.name).length - normalize(a.name).length
+        normalize(b.name).length -
+        normalize(a.name).length
     );
 
-  return contained[0] || null;
+  if (contained[0]) return contained[0];
+
+  // 4. Ultimo tentativo: confronto sui nomi senza parentesi
+  const containedWithoutParentheses = plants
+    .filter((plant) => {
+      const name = normalizePlantName(plant.name);
+
+      return (
+        name &&
+        (targetWithoutParentheses.includes(name) ||
+          name.includes(targetWithoutParentheses))
+      );
+    })
+    .sort(
+      (a, b) =>
+        normalizePlantName(b.name).length -
+        normalizePlantName(a.name).length
+    );
+
+  return containedWithoutParentheses[0] || null;
 }
 
 export async function POST(request) {
