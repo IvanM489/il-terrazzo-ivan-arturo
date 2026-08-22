@@ -51,7 +51,7 @@ const sections = [
 export default function Home() {
   const [welcome, setWelcome] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showTasks, setShowTasks] = useState(true);
+  const [showTasks, setShowTasks] = useState(false);
   const [completedTasks, setCompletedTasks] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [allPlants, setAllPlants] = useState([]);
