@@ -197,7 +197,7 @@ Alla FINE della risposta aggiungi ESATTAMENTE questo blocco:
 ---DATI_NOTA_AI---
 PIANTA: [nome comune o botanico identificato]
 DIAGNOSI_BREVE: [massimo 80 caratteri, molto sintetica]
-AZIONE_BREVE: [sintesi pratica di COSA FARE ORA, massimo 250 caratteri]
+AZIONE_BREVE: [riporta integralmente e fedelmente la sezione COSA FARE ORA della diagnosi completa, senza abbreviazioni o limiti di lunghezza]
 CONFIDENZA_PIANTA: [ALTA oppure MEDIA oppure BASSA]
 ---FINE_DATI_NOTA_AI---
 
