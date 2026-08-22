@@ -197,9 +197,9 @@ Alla FINE della risposta aggiungi ESATTAMENTE questo blocco:
 ---DATI_NOTA_AI---
 PIANTA: [nome comune o botanico identificato]
 DIAGNOSI_BREVE: [massimo 80 caratteri, molto sintetica]
-AZIONE_BREVE: [COPIA INTEGRALMENTE la sezione 5. COSA FARE ORA della diagnosi completa. Deve contenere tutte le indicazioni pratiche generate nella sezione 5, mantenendo tutti i passaggi, senza riassumere, abbreviare, omettere o limitare il testo. Può occupare più righe.]
+AZIONE_BREVE: [COPIA INTEGRALMENTE la sezione 5. COSA FARE ORA della diagnosi completa, mantenendo tutte le righe e tutte le indicazioni]
+CONFIDENZA_PIANTA: [ALTA oppure MEDIA oppure BASSA]
 ---FINE_DATI_NOTA_AI---
-
 Esempio:
 
 ---DATI_NOTA_AI---
@@ -215,6 +215,7 @@ IMPORTANTE:
 - DIAGNOSI_BREVE deve essere molto breve, ad esempio "Cocciniglia", "Ragno rosso", "Stress idrico", "Clorosi ferrica".
 - Non inserire spiegazioni dentro DIAGNOSI_BREVE.
 - La diagnosi completa deve rimanere ricca e dettagliata.
+IMPORTANTE: CONFIDENZA_PIANTA DEVE ESSERE SEMPRE PRESENTE E DEVE ESSERE L'ULTIMA RIGA DEL BLOCCO DATI_NOTA_AI.
               `.trim(),
             },
             {
@@ -257,27 +258,23 @@ IMPORTANTE:
       noteBlockFound: !!noteBlockMatch,
     });
 
-    if (noteBlockMatch) {
+ if (noteBlockMatch) {
   const block = noteBlockMatch[1];
-  console.log(
-  "🧩 DEBUG BLOCCO NOTA AI:",
-  JSON.stringify(block)
-);
 
   const plantMatch = block.match(
-    /PIANTA:\s*(.+?)(?=\n|$)/i
+    /(?:^|\n)\s*PIANTA:\s*(.*?)(?=\n|$)/i
   );
 
   const diagnosisMatch = block.match(
-    /DIAGNOSI_BREVE:\s*(.+?)(?=\n|$)/i
-  );
-
-  const confidenceMatch = block.match(
-    /CONFIDENZA_PIANTA:\s*(ALTA|MEDIA|BASSA)/i
+    /(?:^|\n)\s*DIAGNOSI_BREVE:\s*(.*?)(?=\n|$)/i
   );
 
   const actionMatch = block.match(
-    /AZIONE_BREVE:\s*([\s\S]*?)(?=\n\s*CONFIDENZA_PIANTA\s*:|$)/i
+    /(?:^|\n)\s*AZIONE_BREVE:\s*([\s\S]*?)(?=\n\s*CONFIDENZA_PIANTA\s*:|$)/i
+  );
+
+  const confidenceMatch = block.match(
+    /(?:^|\n)\s*CONFIDENZA_PIANTA:\s*(ALTA|MEDIA|BASSA)/i
   );
 
   plantName =
@@ -291,8 +288,17 @@ IMPORTANTE:
 
   plantConfidence =
     confidenceMatch?.[1]?.trim().toUpperCase() || "BASSA";
-}
 
+  console.log(
+    "✅ DEBUG PARSING NOTA:",
+    JSON.stringify({
+      plantName,
+      diagnosisShort,
+      actionLength: actionShort.length,
+      plantConfidence,
+    })
+  );
+}
     /*
      * La parte tecnica utilizzata per la nota non viene
      * mostrata nella diagnosi completa.
