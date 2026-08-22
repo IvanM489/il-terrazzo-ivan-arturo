@@ -201,6 +201,13 @@ IMPORTANTE:
     let diagnosisShort = "";
     let plantConfidence = "BASSA";
 
+    console.log("🔎 DEBUG DATI NOTA AI:", {
+      plantName,
+      diagnosisShort,
+      plantConfidence,
+      noteBlockFound: !!noteBlockMatch,
+    });
+
     if (noteBlockMatch) {
       const block = noteBlockMatch[1];
 
@@ -283,10 +290,22 @@ IMPORTANTE:
         }
       }
 
+      console.log("🔎 DEBUG PIANTA AI:", plantName);
+      console.log(
+        "🔎 DEBUG PIANTE DATABASE:",
+        allPlants.map((plant) => ({
+          id: plant.id,
+          name: plant.name,
+          plantType: plant.plantType,
+        }))
+      );
+
       matchedPlant = findBestPlantMatch(
         allPlants,
         plantName
       );
+
+      console.log("🔎 DEBUG MATCH:", matchedPlant);
 
       if (matchedPlant) {
         const now = new Date();
@@ -311,7 +330,15 @@ IMPORTANTE:
 
         if (!noteError) {
           noteCreated = true;
+          console.log(
+            "✅ DEBUG NOTA CREATA:",
+            noteText
+          );
         } else {
+          console.error(
+            "❌ DEBUG ERRORE INSERT NOTA:",
+            noteError
+          );
           console.error(
             "Errore creazione nota diagnosi AI:",
             noteError
