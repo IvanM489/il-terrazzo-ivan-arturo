@@ -121,6 +121,7 @@ export default function AdminPiantePage() {
 
       const formData = new FormData();
       formData.append("image", compressedFile);
+      formData.append("plantType", "plants");
 
       const response = await fetch(
         "/api/admin/ai-plant",
