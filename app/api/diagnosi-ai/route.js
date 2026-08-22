@@ -259,6 +259,10 @@ IMPORTANTE:
 
     if (noteBlockMatch) {
   const block = noteBlockMatch[1];
+  console.log(
+  "🧩 DEBUG BLOCCO NOTA AI:",
+  JSON.stringify(block)
+);
 
   const plantMatch = block.match(
     /PIANTA:\s*(.+?)(?=\n|$)/i
