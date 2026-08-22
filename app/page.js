@@ -133,21 +133,6 @@ export default function Home() {
       });
     }
 
-    if (
-      plant.collection === "Bonsai" ||
-      plant.collection === "Piante da interno"
-    ) {
-      result.unshift({
-        id: `irrigazione-${plant.collection}-${plant.id}-${stagione}-${oggi.getFullYear()}`,
-        icon: "💧",
-        title: `Irrigazione ${plant.name}`,
-        text: plant.water || "Controlla l'irrigazione.",
-        type: "irrigazione",
-        season: stagione,
-        year: oggi.getFullYear(),
-      });
-    }
-
     return result;
   });
 
