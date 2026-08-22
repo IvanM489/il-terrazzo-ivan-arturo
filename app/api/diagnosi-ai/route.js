@@ -197,6 +197,7 @@ Alla FINE della risposta aggiungi ESATTAMENTE questo blocco:
 ---DATI_NOTA_AI---
 PIANTA: [nome comune o botanico identificato]
 DIAGNOSI_BREVE: [massimo 80 caratteri, molto sintetica]
+AZIONE_BREVE: [sintesi pratica di COSA FARE ORA, massimo 250 caratteri]
 CONFIDENZA_PIANTA: [ALTA oppure MEDIA oppure BASSA]
 ---FINE_DATI_NOTA_AI---
 
@@ -247,6 +248,7 @@ IMPORTANTE:
 
     let plantName = "";
     let diagnosisShort = "";
+    let actionShort = "";
     let plantConfidence = "BASSA";
 
     console.log("🔎 DEBUG DATI NOTA AI:", {
@@ -266,6 +268,13 @@ IMPORTANTE:
       const diagnosisMatch = block.match(
         /DIAGNOSI_BREVE:\s*(.+)/i
       );
+
+      const actionMatch = block.match(
+        /AZIONE_BREVE:\s*(.+)/i
+      );
+
+      actionShort =
+        actionMatch?.[1]?.trim() || "";
 
       const confidenceMatch = block.match(
         /CONFIDENZA_PIANTA:\s*(ALTA|MEDIA|BASSA)/i
@@ -369,7 +378,10 @@ IMPORTANTE:
         });
 
         const noteText =
-          `${date} — Diagnosi AI: ${matchedPlant.name} — ${diagnosisShort}.`;
+          `${date} — Diagnosi AI: ${matchedPlant.name} — ${diagnosisShort}.` +
+          (actionShort
+            ? `\nCosa fare ora: ${actionShort}`
+            : "");
 
         const { error: noteError } = await supabase
           .from("plant_notes")
