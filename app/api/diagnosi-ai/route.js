@@ -197,8 +197,7 @@ Alla FINE della risposta aggiungi ESATTAMENTE questo blocco:
 ---DATI_NOTA_AI---
 PIANTA: [nome comune o botanico identificato]
 DIAGNOSI_BREVE: [massimo 80 caratteri, molto sintetica]
-AZIONE_BREVE: [riporta integralmente e fedelmente la sezione COSA FARE ORA della diagnosi completa, senza abbreviazioni o limiti di lunghezza]
-CONFIDENZA_PIANTA: [ALTA oppure MEDIA oppure BASSA]
+AZIONE_BREVE: [COPIA INTEGRALMENTE la sezione 5. COSA FARE ORA della diagnosi completa. Deve contenere tutte le indicazioni pratiche generate nella sezione 5, mantenendo tutti i passaggi, senza riassumere, abbreviare, omettere o limitare il testo. Può occupare più righe.]
 ---FINE_DATI_NOTA_AI---
 
 Esempio:
@@ -269,12 +268,12 @@ IMPORTANTE:
         /DIAGNOSI_BREVE:\s*(.+)/i
       );
 
-      const actionMatch = block.match(
-        /AZIONE_BREVE:\s*(.+)/i
-      );
+     const actionMatch = block.match(
+  /AZIONE_BREVE:\s*([\s\S]*?)(?=\nCONFIDENZA_PIANTA:|$)/i
+);
 
-      actionShort =
-        actionMatch?.[1]?.trim() || "";
+actionShort =
+  actionMatch?.[1]?.trim() || "";
 
       const confidenceMatch = block.match(
         /CONFIDENZA_PIANTA:\s*(ALTA|MEDIA|BASSA)/i
