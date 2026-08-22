@@ -290,22 +290,26 @@ IMPORTANTE:
         }
       }
 
-      console.log("🔎 DEBUG PIANTA AI:", plantName);
-      console.log(
-        "🔎 DEBUG PIANTE DATABASE:",
-        allPlants.map((plant) => ({
-          id: plant.id,
-          name: plant.name,
-          plantType: plant.plantType,
-        }))
-      );
-
       matchedPlant = findBestPlantMatch(
         allPlants,
         plantName
       );
 
-      console.log("🔎 DEBUG MATCH:", matchedPlant);
+      console.log(
+        "🌱 DEBUG NOTA COMPLETO:",
+        JSON.stringify({
+          plantName,
+          diagnosisShort,
+          plantConfidence,
+          noteBlockFound: !!noteBlockMatch,
+          databasePlants: allPlants.map((plant) => ({
+            id: plant.id,
+            name: plant.name,
+            plantType: plant.plantType,
+          })),
+          matchedPlant,
+        })
+      );
 
       if (matchedPlant) {
         const now = new Date();
