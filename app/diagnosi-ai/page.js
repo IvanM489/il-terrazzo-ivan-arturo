@@ -284,9 +284,10 @@ export default function DiagnosiAI() {
     setCameraError("");
 
     try {
-      const formData = new FormData();
+      const compressedFile = await compressImage(photo);
 
-      formData.append("image", photo);
+      const formData = new FormData();
+      formData.append("image", compressedFile);
 
       const response = await fetch(
         "/api/diagnosi-ai",
@@ -296,8 +297,23 @@ export default function DiagnosiAI() {
         }
       );
 
-      const result =
-        await response.json();
+      const responseText = await response.text();
+
+      let result;
+
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        console.error(
+          "Risposta non JSON dall'API diagnosi:",
+          response.status,
+          responseText
+        );
+
+        throw new Error(
+          `Errore del server (${response.status}).`
+        );
+      }
 
       if (!response.ok) {
         throw new Error(
@@ -320,6 +336,91 @@ export default function DiagnosiAI() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function compressImage(file) {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    try {
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = reject;
+        image.src = objectUrl;
+      });
+
+      const maxSize = 1600;
+
+      let width = image.naturalWidth;
+      let height = image.naturalHeight;
+
+      if (width > maxSize || height > maxSize) {
+        if (width > height) {
+          height = Math.round(
+            height * maxSize / width
+          );
+          width = maxSize;
+        } else {
+          width = Math.round(
+            width * maxSize / height
+          );
+          height = maxSize;
+        }
+      }
+
+      const canvas = document.createElement("canvas");
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const context = canvas.getContext("2d");
+
+      if (!context) {
+        throw new Error(
+          "Impossibile preparare la fotografia."
+        );
+      }
+
+      context.drawImage(
+        image,
+        0,
+        0,
+        width,
+        height
+      );
+
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob(
+          resolve,
+          "image/jpeg",
+          0.82
+        );
+      });
+
+      if (!blob) {
+        throw new Error(
+          "Non è stato possibile preparare la fotografia."
+        );
+      }
+
+      console.log(
+        "Foto diagnosi compressa:",
+        Math.round(file.size / 1024),
+        "KB →",
+        Math.round(blob.size / 1024),
+        "KB"
+      );
+
+      return new File(
+        [blob],
+        "diagnosi-ai.jpg",
+        {
+          type: "image/jpeg",
+        }
+      );
+    } finally {
+      URL.revokeObjectURL(objectUrl);
     }
   }
 
