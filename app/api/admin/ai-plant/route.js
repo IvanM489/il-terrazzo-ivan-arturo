@@ -80,6 +80,7 @@ Deve essere ESATTAMENTE una di queste:
 - Fiorita
 - Rampicante
 - Albero ornamentale
+- Albero da frutto
 - Arbusto
 - Erbacea
 `;
@@ -247,6 +248,7 @@ IMPORTANTE:
         "Fiorita",
         "Rampicante",
         "Albero ornamentale",
+        "Albero da frutto",
         "Arbusto",
         "Erbacea",
       ];

@@ -367,6 +367,7 @@ export default function AdminPiantePage() {
                   <option>Fiorita</option>
                   <option>Rampicante</option>
                   <option>Albero ornamentale</option>
+                  <option>Albero da frutto</option>
                   <option>Arbusto</option>
                   <option>Erbacea</option>
                 </select>
