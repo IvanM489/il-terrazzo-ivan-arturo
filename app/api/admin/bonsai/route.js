@@ -178,17 +178,83 @@ export async function DELETE(request) {
 
   const supabase = adminClient();
 
-  const { error } = await supabase
-    .from("bonsai")
-    .delete()
-    .eq("id", body.id);
+  // 1. Recupera le fotografie associate al bonsai
+  const { data: photos, error: photosError } = await supabase
+    .from("plant_photos")
+    .select("id, storage_path")
+    .eq("plant_id", body.id)
+    .eq("plant_type", "bonsai");
 
-  if (error) {
+  if (photosError) {
     return NextResponse.json(
-      { error: error.message },
+      { error: photosError.message },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ success: true });
+  // 2. Elimina i file fisici dal bucket Storage
+  if (photos?.length) {
+    const storagePaths = photos
+      .map((photo) => photo.storage_path)
+      .filter(Boolean);
+
+    if (storagePaths.length) {
+      const { error: storageError } = await supabase.storage
+        .from("plant-photos")
+        .remove(storagePaths);
+
+      if (storageError) {
+        return NextResponse.json(
+          { error: storageError.message },
+          { status: 500 }
+        );
+      }
+    }
+  }
+
+  // 3. Elimina i record delle fotografie
+  const { error: deletePhotosError } = await supabase
+    .from("plant_photos")
+    .delete()
+    .eq("plant_id", body.id)
+    .eq("plant_type", "bonsai");
+
+  if (deletePhotosError) {
+    return NextResponse.json(
+      { error: deletePhotosError.message },
+      { status: 500 }
+    );
+  }
+
+  // 4. Elimina tutte le note/diario del bonsai
+  const { error: deleteNotesError } = await supabase
+    .from("plant_notes")
+    .delete()
+    .eq("plant_id", body.id)
+    .eq("plant_type", "bonsai");
+
+  if (deleteNotesError) {
+    return NextResponse.json(
+      { error: deleteNotesError.message },
+      { status: 500 }
+    );
+  }
+
+  // 5. Infine elimina il bonsai
+  const { error: deletePlantError } = await supabase
+    .from("bonsai")
+    .delete()
+    .eq("id", body.id);
+
+  if (deletePlantError) {
+    return NextResponse.json(
+      { error: deletePlantError.message },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+  });
 }
+
