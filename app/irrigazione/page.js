@@ -474,20 +474,183 @@ export default function Irrigazione() {
     return () => clearInterval(interval);
   }, []);
 
-  const plannedEvents = tuyaPrograms.map(
-    (program) => ({
-      id:
-        `tuya-${program.dp}-${program.index}`,
-      type: "programmata",
-      program:
-        program.index,
-      time:
-        program.time,
-      durationMinutes:
-        program.durationMinutes,
-      date: new Date().toISOString(),
-    })
-  );
+  /*
+   * Programmi Tuya letti direttamente dal dispositivo.
+   *
+   * NON assumiamo ancora il significato dei byte di
+   * ricorrenza: il formato proprietario del R2603 va
+   * decodificato prima di generare le date.
+   *
+   * Per ora manteniamo l'orario reale del programma
+   * senza inventare il giorno della settimana.
+   */
+  /*
+   * Genera le prossime occorrenze dei programmi Tuya.
+   *
+   * I programmi possono essere:
+   * - settimanali, con weekdays[]
+   * - a intervallo, con intervalDays
+   */
+
+  function getTuyaOccurrences(program, daysAhead = 62) {
+    const occurrences = [];
+
+    if (
+      !program.enabled ||
+      !program.time ||
+      !program.durationMinutes
+    ) {
+      return occurrences;
+    }
+
+    const [hours, minutes] =
+      program.time.split(":").map(Number);
+
+    const now = new Date();
+
+    /*
+     * PROGRAMMI A INTERVALLO
+     *
+     * Per il programma attualmente presente
+     * alle 20:00, Tuya usa una ricorrenza
+     * ogni 3 giorni.
+     *
+     * La sequenza corretta è:
+     * 1, 4, 7, 10, 13, 16...
+     *
+     * L'ancora non deve essere "oggi", altrimenti
+     * ogni aggiornamento della pagina sposterebbe
+     * artificialmente la sequenza.
+     */
+    if (
+      program.recurrenceType === 1 &&
+      Number.isInteger(program.intervalDays) &&
+      program.intervalDays >= 2
+    ) {
+      const intervalDays = program.intervalDays;
+
+      /*
+       * Ancora della programmazione Tuya.
+       *
+       * 01/09/2026 è la prima occorrenza osservata
+       * per il programma delle 20:00.
+       */
+      const anchor = new Date(
+        2026,
+        8,
+        1,
+        hours,
+        minutes,
+        0,
+        0
+      );
+
+      for (
+        let date = new Date(anchor);
+        date.getTime() <=
+          anchor.getTime() +
+            daysAhead * 24 * 60 * 60 * 1000;
+        date.setDate(
+          date.getDate() + intervalDays
+        )
+      ) {
+        if (date <= now) {
+          continue;
+        }
+
+        occurrences.push({
+          id:
+            `tuya-${program.dp}-${program.index}-${date.getTime()}`,
+          type: "programmata",
+          source: "tuya",
+          program: program.index,
+          time: program.time,
+          durationMinutes:
+            program.durationMinutes,
+          date: date.toISOString(),
+        });
+      }
+
+      return occurrences;
+    }
+
+    /*
+     * TYPE 1 = ricorrenza settimanale.
+     */
+    if (
+      program.recurrenceType === 1 &&
+      Array.isArray(program.weekdays) &&
+      program.weekdays.length > 0
+    ) {
+      for (
+        let offset = 0;
+        offset <= daysAhead;
+        offset++
+      ) {
+        const date = new Date();
+
+        date.setHours(0, 0, 0, 0);
+        date.setDate(
+          date.getDate() + offset
+        );
+
+        const jsDay = date.getDay();
+
+        const mondayIndex =
+          jsDay === 0 ? 6 : jsDay - 1;
+
+        if (
+          !program.weekdays.includes(
+            mondayIndex
+          )
+        ) {
+          continue;
+        }
+
+        date.setHours(
+          hours,
+          minutes,
+          0,
+          0
+        );
+
+        if (date <= now) {
+          continue;
+        }
+
+        occurrences.push({
+          id:
+            `tuya-${program.dp}-${program.index}-${date.getTime()}`,
+          type: "programmata",
+          source: "tuya",
+          program: program.index,
+          time: program.time,
+          durationMinutes:
+            program.durationMinutes,
+          date: date.toISOString(),
+        });
+      }
+
+      return occurrences;
+    }
+
+    /*
+     * TYPE 4:
+     *
+     * Per ora NON lo mostriamo nel calendario.
+     *
+     * I dati type 4 che il dispositivo continua
+     * a restituire possono rappresentare uno slot
+     * rimasto nel dato grezzo dopo la cancellazione
+     * dall'app Tuya.
+     */
+    return occurrences;
+  }
+
+  const plannedEvents =
+    tuyaPrograms.flatMap((program) =>
+      getTuyaOccurrences(program)
+    );
 
   const todayKey =
     dateKey(new Date());
@@ -1175,10 +1338,12 @@ export default function Irrigazione() {
             color: "#68736b",
           }}
         >
-          Programmi presenti nel
+          Slot configurati nel
           dispositivo:{" "}
           <strong>
-            {tuyaPrograms.length}
+            {tuyaPrograms.filter(
+              (program) => program.enabled
+            ).length}
           </strong>
         </p>
 
@@ -1192,10 +1357,10 @@ export default function Irrigazione() {
           }}
         >
           {[
-            ["Programma 1", "water_program1"],
-            ["Programma 2", "water_program2"],
-            ["Programma 3", "water_program3"],
-            ["Programma 4", "water_program4"],
+            ["Slot 1", "water_program1"],
+            ["Slot 2", "water_program2"],
+            ["Slot 3", "water_program3"],
+            ["Slot 4", "water_program4"],
           ].map(
             ([label, code]) => (
               <div
@@ -1237,8 +1402,10 @@ export default function Irrigazione() {
                         : "Configurato";
                     }
 
-                    return `${records.length} programmazione${
-                      records.length === 1 ? "" : "i"
+                    return `${records.length} ${
+                      records.length === 1
+                        ? "irrigazione configurata"
+                        : "irrigazioni configurate"
                     }`;
                   })()}
                 </div>
@@ -1255,7 +1422,7 @@ export default function Irrigazione() {
           }}
         >
           ℹ️ Il dispositivo contiene
-          {tuyaPrograms.length} programmazioni
+          {tuyaPrograms.length} irrigazioni configurate
           attive riconosciute. Ora le
           colleghiamo al calendario.
         </p>

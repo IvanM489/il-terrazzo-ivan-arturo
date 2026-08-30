@@ -53,8 +53,14 @@ export async function proxy(request) {
     return response;
   }
 
-  // Tutto il resto richiede autenticazione.
-  if (!user) {
+  // Le API gestiscono autonomamente l'autenticazione
+  // e devono restituire JSON invece di essere
+  // reindirizzate alla pagina /login.
+  const isApiRoute = pathname.startsWith("/api/");
+
+  // Tutto ciò che non è API richiede autenticazione
+  // tramite redirect alla pagina di login.
+  if (!user && !isApiRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirect", pathname);

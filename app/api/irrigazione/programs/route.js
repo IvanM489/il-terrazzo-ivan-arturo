@@ -93,6 +93,88 @@ function decodeProgramBlock(bytes, dp, index) {
   const recurrenceType = bytes[1];
   const recurrenceValue = bytes[2];
 
+  /*
+   * Ricorrenza a intervallo.
+   *
+   * Nei record type 1:
+   *   byte 13 = 1
+   *   byte 14 = N-1
+   *
+   * Nei record type 4:
+   *   byte 8 contiene il valore osservato
+   *   dell'intervallo.
+   */
+  let intervalDays = null;
+
+  if (recurrenceType === 1 && bytes[13] === 1) {
+    const intervalCode = bytes[14];
+
+    if (
+      Number.isInteger(intervalCode) &&
+      intervalCode >= 1
+    ) {
+      intervalDays = intervalCode + 1;
+    }
+  }
+
+  if (recurrenceType === 4) {
+    const intervalCode = bytes[8];
+
+    if (
+      Number.isInteger(intervalCode) &&
+      intervalCode >= 1
+    ) {
+      intervalDays = intervalCode + 1;
+    }
+  }
+
+  /*
+   * Ricorrenza Tuya.
+   *
+   * TYPE 1:
+   *   byte 13 = 1 -> intervallo
+   *   byte 14 = intervallo - 1
+   *
+   *   byte 13 = 2 -> settimanale
+   *   byte 17 = bitmask giorni
+   *
+   * TYPE 4:
+   *   intervallo in byte 8, codificato come N - 1.
+   */
+
+  let weekdayMask = 0;
+  let weekdays = [];
+
+  if (recurrenceType === 1) {
+    const recurrenceMode = bytes[13] ?? 0;
+
+    if (recurrenceMode === 1) {
+      const intervalCode = bytes[14] ?? null;
+
+      if (Number.isInteger(intervalCode)) {
+        intervalDays = intervalCode + 1;
+      }
+    }
+
+    if (recurrenceMode === 2) {
+      weekdayMask = bytes[17] ?? 0;
+
+      for (let day = 0; day < 7; day++) {
+        if (weekdayMask & (1 << day)) {
+          weekdays.push(day);
+        }
+      }
+    }
+  }
+
+  if (recurrenceType === 4) {
+    const intervalCode = bytes[8] ?? null;
+
+    if (Number.isInteger(intervalCode)) {
+      intervalDays = intervalCode + 1;
+    }
+  }
+
   const timeMinutes =
     (bytes[3] << 8) |
     bytes[4];
@@ -119,6 +201,11 @@ function decodeProgramBlock(bytes, dp, index) {
 
     recurrenceType,
     recurrenceValue,
+    intervalDays,
+
+    weekdayMask,
+    weekdays,
+    intervalDays,
 
     timeMinutes:
       validTime
