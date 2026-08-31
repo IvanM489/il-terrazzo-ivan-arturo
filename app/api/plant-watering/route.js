@@ -1,15 +1,25 @@
 import { NextResponse } from "next/server";
 import { createClient } from "../../../lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 const ALLOWED_TYPES = ["indoor_plants", "bonsai"];
 const TABLE = "plant_watering";
 
+function createAdminClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+}
+
 export async function GET() {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const authClient = await createClient();
+    const { data: { user } } = await authClient.auth.getUser();
     if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
+    const supabase = createAdminClient();
     const [indoorResult, bonsaiResult, wateringResult] = await Promise.all([
       supabase.from("indoor_plants").select("id, name"),
       supabase.from("bonsai").select("id, name"),
@@ -34,8 +44,8 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const authClient = await createClient();
+    const { data: { user } } = await authClient.auth.getUser();
     if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
     const body = await request.json();
@@ -43,6 +53,7 @@ export async function POST(request) {
     const plantType = body?.plantType;
     if (!plantId || !ALLOWED_TYPES.includes(plantType)) return NextResponse.json({ error: "Pianta non valida." }, { status: 400 });
 
+    const supabase = createAdminClient();
     const wateredAt = new Date().toISOString();
     const { error: deleteError } = await supabase.from(TABLE).delete().eq("plant_id", plantId).eq("plant_type", plantType);
     if (deleteError) throw deleteError;
