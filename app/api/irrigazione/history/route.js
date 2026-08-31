@@ -13,33 +13,32 @@ function hmac(secret, value) {
   return crypto.createHmac("sha256", secret).update(value).digest("hex").toUpperCase();
 }
 
-function signRequest(method, path, query = "", token = "") {
+// Keep authentication/signing identical to the already-working Tuya programs API.
+// In particular, Tuya accepts the nonce as part of the signed request.
+function signRequest(method, path, token = "") {
   const clientId = process.env.TUYA_ACCESS_ID;
   const secret = process.env.TUYA_ACCESS_SECRET;
   const t = Date.now().toString();
-  const fullPath = query ? `${path}?${query}` : path;
-  const stringToSign = `${method.toUpperCase()}\n${sha256("")}\n\n${fullPath}`;
-
-  // The Tuya API Explorer request for report-logs succeeds without a nonce.
-  // Keep this request format identical to the working Explorer request.
-  const sign = hmac(secret, clientId + token + t + stringToSign);
-  return { t, sign };
+  const nonce = crypto.randomUUID();
+  const bodyHash = sha256("");
+  const stringToSign = `${method.toUpperCase()}\n${bodyHash}\n\n${path}`;
+  const sign = hmac(secret, clientId + token + t + nonce + stringToSign);
+  return { t, nonce, sign };
 }
 
 async function getToken() {
   const clientId = process.env.TUYA_ACCESS_ID;
-  const path = "/v1.0/token";
-  const query = "grant_type=1";
-  const { t, sign } = signRequest("GET", path, query);
+  const path = "/v1.0/token?grant_type=1";
+  const { t, nonce, sign } = signRequest("GET", path);
 
-  const response = await fetch(`${TUYA_BASE_URL}${path}?${query}`, {
+  const response = await fetch(`${TUYA_BASE_URL}${path}`, {
     method: "GET",
     headers: {
       client_id: clientId,
       t,
+      nonce,
       sign_method: "HMAC-SHA256",
       sign,
-      "Content-Type": "application/json",
     },
     cache: "no-store",
   });
@@ -51,20 +50,19 @@ async function getToken() {
   return result.result.access_token;
 }
 
-async function tuyaGet(path, query, token) {
+async function tuyaGet(path, token) {
   const clientId = process.env.TUYA_ACCESS_ID;
-  const { t, sign } = signRequest("GET", path, query, token);
-  const url = `${TUYA_BASE_URL}${path}?${query}`;
+  const { t, nonce, sign } = signRequest("GET", path, token);
 
-  const response = await fetch(url, {
+  const response = await fetch(`${TUYA_BASE_URL}${path}`, {
     method: "GET",
     headers: {
       client_id: clientId,
       access_token: token,
       t,
+      nonce,
       sign_method: "HMAC-SHA256",
       sign,
-      "Content-Type": "application/json",
     },
     cache: "no-store",
   });
@@ -86,8 +84,8 @@ export async function GET(request) {
     const token = await getToken();
 
     const query = `codes=${encodeURIComponent("switch,valve_status")}&end_time=${endTime}&size=100&start_time=${startTime}`;
-    const path = `/v2.0/cloud/thing/${DEVICE_ID}/report-logs`;
-    const result = await tuyaGet(path, query, token);
+    const path = `/v2.0/cloud/thing/${DEVICE_ID}/report-logs?${query}`;
+    const result = await tuyaGet(path, token);
 
     if (!result.success) {
       return NextResponse.json(
