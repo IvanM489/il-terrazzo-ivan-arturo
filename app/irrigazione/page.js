@@ -532,15 +532,15 @@ export default function Irrigazione() {
       /*
        * Ancora della programmazione Tuya.
        *
-       * 01/09/2026 è la prima occorrenza osservata
-       * per il programma delle 20:00.
-       */
-      /*
        * Ogni programmazione a intervallo ha la propria
-       * data di partenza. Non possiamo usare una sola
-       * ancora per tutti i programmi: il programma delle
-       * 20:00 parte il 01/09/2026, mentre quello delle
-       * 06:00 parte il 05/09/2026.
+       * data di partenza osservata. Il dispositivo non
+       * espone nel record raw decodificato un campo data
+       * separato, quindi per i programmi che conosciamo
+       * associamo esplicitamente l'ancora alla programmazione.
+       *
+       * 01/09/2026 -> programma 20:00 ogni 3 giorni
+       * 05/09/2026 -> programma 06:00 ogni 4 giorni
+       * 04/09/2026 -> programma 12:00 ogni 2 giorni
        */
       const intervalAnchors = {
         "20:00": new Date(
@@ -556,6 +556,15 @@ export default function Irrigazione() {
           2026,
           8,
           5,
+          hours,
+          minutes,
+          0,
+          0
+        ),
+        "12:00": new Date(
+          2026,
+          8,
+          4,
           hours,
           minutes,
           0,
