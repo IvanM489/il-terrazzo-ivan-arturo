@@ -1,0 +1,53 @@
+name: Fix irrigation calendar
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'chore: apply automatic irrigation calendar fix'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Patch calendar logic
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("app/irrigazione/page.js")
+          text = path.read_text(encoding="utf-8")
+
+          start_marker = '''    if (\n      program.recurrenceType === 1 &&\n      Number.isInteger(program.intervalDays) &&\n      program.intervalDays >= 2\n    ) {'''
+
+          end_marker = '''    if (\n      program.recurrenceType === 1 &&\n      Array.isArray(program.weekdays) &&\n      program.weekdays.length > 0\n    ) {'''
+
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+
+          replacement = '''    if (\n      program.recurrenceType === 1 &&\n      Number.isInteger(program.intervalDays) &&\n      program.intervalDays >= 2\n    ) {\n      const intervalDays =\n        program.intervalDays;\n\n      /*\n       * La data di partenza viene letta direttamente dal\n       * Device Timer API di Tuya tramite program.startDate.\n       * Non esistono più date hardcoded nel calendario.\n       */\n      if (!program.startDate) {\n        console.warn(\n          "Programma Tuya senza data di partenza:",\n          program\n        );\n        return occurrences;\n      }\n\n      const anchorParts =\n        String(program.startDate).split("-").map(Number);\n\n      if (\n        anchorParts.length !== 3 ||\n        anchorParts.some(\n          (value) => !Number.isInteger(value)\n        )\n      ) {\n        return occurrences;\n      }\n\n      const anchor = new Date(\n        anchorParts[0],\n        anchorParts[1] - 1,\n        anchorParts[2],\n        hours,\n        minutes,\n        0,\n        0\n      );\n\n      if (Number.isNaN(anchor.getTime())) {\n        return occurrences;\n      }\n\n      const endTime = new Date(now);\n      endTime.setHours(0, 0, 0, 0);\n      endTime.setDate(\n        endTime.getDate() + daysAhead\n      );\n\n      let date = new Date(anchor);\n\n      if (date <= now) {\n        const today = new Date(\n          now.getFullYear(),\n          now.getMonth(),\n          now.getDate()\n        );\n\n        const anchorDay = new Date(\n          anchor.getFullYear(),\n          anchor.getMonth(),\n          anchor.getDate()\n        );\n\n        const elapsedDays = Math.floor(\n          (today.getTime() - anchorDay.getTime()) /\n            (24 * 60 * 60 * 1000)\n        );\n\n        const cycles =\n          Math.floor(\n            elapsedDays / intervalDays\n          ) + 1;\n\n        date.setDate(\n          date.getDate() +\n            cycles * intervalDays\n        );\n      }\n\n      while (date <= endTime) {\n        if (date > now) {\n          occurrences.push({\n            id:\n              `tuya-${program.dp}-${program.index}-${date.getTime()}`,\n            type: "programmata",\n            source: "tuya",\n            program: program.index,\n            time: program.time,\n            durationMinutes:\n              program.durationMinutes,\n            date: date.toISOString(),\n          });\n        }\n\n        date = new Date(date);\n        date.setDate(\n          date.getDate() + intervalDays\n        );\n      }\n\n      return occurrences;\n    }\n\n'''
+
+          path.write_text(
+              text[:start] + replacement + text[end:],
+              encoding="utf-8",
+          )
+
+      - name: Verify build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit automatic fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/fix-irrigation-calendar.yml
+          git add app/irrigazione/page.js .github/workflows/fix-irrigation-calendar.yml
+          git commit -m "chore: apply automatic irrigation calendar fix"
+          git push
