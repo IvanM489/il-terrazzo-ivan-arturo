@@ -186,28 +186,26 @@ export default function Irrigazione() {
       end.setHours(23, 59, 59, 999);
       end.setDate(end.getDate() + daysAhead);
 
+      // Partiamo dalla data di ancoraggio e avanziamo di un intervallo
+      // alla volta finché troviamo il primo ciclo futuro. In questo modo
+      // non saltiamo il ciclo di oggi quando l'orario programmato deve
+      // ancora arrivare.
       let date = new Date(anchor);
-      if (date <= now) {
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const anchorDay = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
-        const elapsedDays = Math.floor((today.getTime() - anchorDay.getTime()) / 86400000);
-        const cycles = Math.floor(elapsedDays / program.intervalDays) + 1;
-        date.setDate(date.getDate() + cycles * program.intervalDays);
+      while (date <= now) {
+        date.setDate(date.getDate() + program.intervalDays);
       }
 
       while (date <= end) {
-        if (date > now) {
-          occurrences.push({
-            id: `tuya-${program.dp}-${program.index}-${date.getTime()}`,
-            type: "programmata",
-            source: "tuya",
-            program: program.index,
-            time: program.time,
-            durationMinutes: program.durationMinutes,
-            startDate: program.startDate,
-            date: date.toISOString(),
-          });
-        }
+        occurrences.push({
+          id: `tuya-${program.dp}-${program.index}-${date.getTime()}`,
+          type: "programmata",
+          source: "tuya",
+          program: program.index,
+          time: program.time,
+          durationMinutes: program.durationMinutes,
+          startDate: program.startDate,
+          date: date.toISOString(),
+        });
         date = new Date(date);
         date.setDate(date.getDate() + program.intervalDays);
       }
