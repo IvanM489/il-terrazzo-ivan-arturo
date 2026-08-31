@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { plants } from "../../data/plants";
 
 const DEVICE_ID = "bf4f9c13a84f59ac39dybk";
 
 function formatTime(value) {
   return new Date(value).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatWateredDate(value) {
+  return new Date(value).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 function dateKey(value) {
@@ -36,7 +39,10 @@ export default function Irrigazione() {
   const [irrigationHistory, setIrrigationHistory] = useState([]);
   const [tuyaPrograms, setTuyaPrograms] = useState([]);
   const [programsLoading, setProgramsLoading] = useState(true);
-  const [lastWatered, setLastWatered] = useState({});
+  const [wateringPlants, setWateringPlants] = useState([]);
+  const [wateringRecords, setWateringRecords] = useState([]);
+  const [wateringLoading, setWateringLoading] = useState(true);
+  const [wateringSaving, setWateringSaving] = useState(null);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
 
   async function loadStatus() {
@@ -69,6 +75,28 @@ export default function Irrigazione() {
     }
   }
 
+  async function loadWatering() {
+    try {
+      setWateringLoading(true);
+      const [plantsResponse, wateringResponse] = await Promise.all([
+        fetch("/api/home/plants", { cache: "no-store" }),
+        fetch("/api/plant-watering", { cache: "no-store" }),
+      ]);
+      const plantsResult = await plantsResponse.json();
+      const wateringResult = await wateringResponse.json();
+      if (!plantsResponse.ok) throw new Error(plantsResult.error || "Errore nel caricamento delle piante.");
+      if (!wateringResponse.ok || !wateringResult.success) throw new Error(wateringResult.error || "Errore nel caricamento delle annaffiature.");
+      setWateringPlants((plantsResult.plants || []).filter((plant) => plant.collection === "Piante da interno" || plant.collection === "Bonsai"));
+      setWateringRecords(wateringResult.records || []);
+    } catch (error) {
+      console.error("Errore registro annaffiature:", error);
+      setWateringPlants([]);
+      setWateringRecords([]);
+    } finally {
+      setWateringLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadStatus();
     const interval = setInterval(loadStatus, 30000);
@@ -87,21 +115,14 @@ export default function Irrigazione() {
         const response = await fetch("/api/irrigazione/history?days=90", { cache: "no-store" });
         const result = await response.json();
         if (response.ok && result.success) {
-          setIrrigationHistory((result.events || []).filter((event) => event.value === true).map((event) => ({
-            id: event.id, date: event.date, type: "tuya", source: "device",
-          })));
+          setIrrigationHistory((result.events || []).filter((event) => event.value === true).map((event) => ({ id: event.id, date: event.date, type: "tuya", source: "device" })));
         }
       } catch (error) {
         console.error("Errore storico Tuya:", error);
       }
     }
     loadHistory();
-    try {
-      const saved = window.localStorage.getItem("lastWatered");
-      if (saved) setLastWatered(JSON.parse(saved));
-    } catch {
-      window.localStorage.removeItem("lastWatered");
-    }
+    loadWatering();
   }, []);
 
   const statusMap = useMemo(() => {
@@ -115,15 +136,10 @@ export default function Irrigazione() {
     setSwitchLoading(true);
     setStatusError("");
     try {
-      const response = await fetch("/api/irrigazione/control", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ switch: value }),
-      });
+      const response = await fetch("/api/irrigazione/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ switch: value }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Errore nel comando dell'irrigazione.");
-      if (value) {
-        const event = { id: crypto.randomUUID(), date: new Date().toISOString(), type: "manual", source: "dashboard" };
-        setIrrigationHistory((previous) => [event, ...previous].slice(0, 500));
-      }
+      if (value) setIrrigationHistory((previous) => [{ id: crypto.randomUUID(), date: new Date().toISOString(), type: "manual", source: "dashboard" }, ...previous].slice(0, 500));
       await loadStatus();
     } catch (error) {
       setStatusError(error.message);
@@ -132,30 +148,25 @@ export default function Irrigazione() {
     }
   }
 
-  function annaffia(name) {
-    const date = new Date().toISOString();
-    const next = { ...lastWatered, [name]: date };
-    setLastWatered(next);
-    window.localStorage.setItem("lastWatered", JSON.stringify(next));
-    const saved = window.localStorage.getItem("plantActions");
-    const actions = saved ? JSON.parse(saved) : [];
-    actions.push({ date, type: "innaffiata", plant: name });
-    window.localStorage.setItem("plantActions", JSON.stringify(actions));
+  async function annaffia(plant) {
+    const key = `${plant.collection}:${plant.id}`;
+    setWateringSaving(key);
+    try {
+      const response = await fetch("/api/plant-watering", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ plantId: plant.id, plantType: plant.collection === "Bonsai" ? "bonsai" : "indoor_plants" }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || "Errore nel salvataggio dell'annaffiatura.");
+      setWateringRecords((current) => [result.record, ...current.filter((item) => !(String(item.plant_id) === String(result.record.plant_id) && item.plant_type === result.record.plant_type))]);
+    } catch (error) {
+      console.error("Errore salvataggio annaffiatura:", error);
+      setStatusError(error.message);
+    } finally {
+      setWateringSaving(null);
+    }
   }
 
-  function eliminaUltimaAnnaffiatura(name) {
-    const next = { ...lastWatered };
-    delete next[name];
-    setLastWatered(next);
-    window.localStorage.setItem("lastWatered", JSON.stringify(next));
-    const saved = window.localStorage.getItem("plantActions");
-    const actions = saved ? JSON.parse(saved) : [];
-    let removed = false;
-    const filtered = actions.filter((action) => {
-      if (!removed && action.plant === name && action.type === "innaffiata") { removed = true; return false; }
-      return true;
-    });
-    window.localStorage.setItem("plantActions", JSON.stringify(filtered));
+  function getWateringRecord(plant) {
+    const plantType = plant.collection === "Bonsai" ? "bonsai" : "indoor_plants";
+    return wateringRecords.find((record) => String(record.plant_id) === String(plant.id) && record.plant_type === plantType) || null;
   }
 
   function getTuyaOccurrences(program, daysAhead = 90) {
@@ -163,7 +174,6 @@ export default function Irrigazione() {
     if (!program.enabled || !program.time || !program.durationMinutes) return occurrences;
     const [hours, minutes] = program.time.split(":").map(Number);
     const now = new Date();
-
     if (Number.isInteger(program.intervalDays) && program.intervalDays >= 2) {
       const anchor = parseStartDate(program.startDate, hours, minutes);
       if (!anchor) return occurrences;
@@ -173,13 +183,12 @@ export default function Irrigazione() {
       let date = new Date(anchor);
       while (date <= now) date.setDate(date.getDate() + program.intervalDays);
       while (date <= end) {
-        occurrences.push({ id: `tuya-${program.dp}-${program.index}-${date.getTime()}`, type: "programmata", source: "tuya", program: program.index, time: program.time, durationMinutes: program.durationMinutes, startDate: program.startDate, date: date.toISOString() });
+        occurrences.push({ id: `tuya-${program.dp}-${program.index}-${date.getTime()}`, time: program.time, durationMinutes: program.durationMinutes, date: date.toISOString() });
         date = new Date(date);
         date.setDate(date.getDate() + program.intervalDays);
       }
       return occurrences;
     }
-
     if (program.recurrenceType === 1 && Array.isArray(program.weekdays) && program.weekdays.length > 0) {
       for (let offset = 0; offset <= daysAhead; offset++) {
         const date = new Date();
@@ -190,7 +199,7 @@ export default function Irrigazione() {
         if (!program.weekdays.includes(mondayIndex)) continue;
         date.setHours(hours, minutes, 0, 0);
         if (date <= now) continue;
-        occurrences.push({ id: `tuya-${program.dp}-${program.index}-${date.getTime()}`, type: "programmata", source: "tuya", program: program.index, time: program.time, durationMinutes: program.durationMinutes, date: date.toISOString() });
+        occurrences.push({ id: `tuya-${program.dp}-${program.index}-${date.getTime()}`, time: program.time, durationMinutes: program.durationMinutes, date: date.toISOString() });
       }
     }
     return occurrences;
@@ -205,14 +214,9 @@ export default function Irrigazione() {
   const calendarDays = [];
   for (let i = 0; i < mondayOffset; i++) calendarDays.push(null);
   for (let day = 1; day <= daysInMonth; day++) calendarDays.push(day);
-
   const historyByDay = useMemo(() => {
     const map = {};
-    irrigationHistory.forEach((event) => {
-      const key = dateKey(event.date);
-      if (!map[key]) map[key] = [];
-      map[key].push(event);
-    });
+    irrigationHistory.forEach((event) => { const key = dateKey(event.date); if (!map[key]) map[key] = []; map[key].push(event); });
     return map;
   }, [irrigationHistory]);
 
@@ -228,11 +232,7 @@ export default function Irrigazione() {
   return (
     <main style={{ maxWidth: "1150px", margin: "0 auto", padding: "35px 20px 70px", fontFamily: "Arial, Helvetica, sans-serif" }}>
       <a href="/" style={{ color: "#55745b", textDecoration: "none", fontWeight: "700" }}>← Torna alla home</a>
-      <header style={{ marginTop: "25px", marginBottom: "25px" }}>
-        <div style={{ fontSize: "14px", fontWeight: "700", letterSpacing: "1.5px", color: "#55745b" }}>SISTEMA SMART TUYA</div>
-        <h1 style={{ fontFamily: "Georgia, serif", fontSize: "42px", color: "#354d3b", margin: "8px 0" }}>💧 Irrigazione</h1>
-        <p style={{ color: "#68736b", fontSize: "17px", margin: 0 }}>Controllo reale del sistema di irrigazione del terrazzo.</p>
-      </header>
+      <header style={{ marginTop: "25px", marginBottom: "25px" }}><div style={{ fontSize: "14px", fontWeight: "700", letterSpacing: "1.5px", color: "#55745b" }}>SISTEMA SMART TUYA</div><h1 style={{ fontFamily: "Georgia, serif", fontSize: "42px", color: "#354d3b", margin: "8px 0" }}>💧 Irrigazione</h1><p style={{ color: "#68736b", fontSize: "17px", margin: 0 }}>Controllo reale del sistema di irrigazione del terrazzo.</p></header>
       {statusError && <div style={{ padding: "14px 18px", borderRadius: "14px", background: "#fff0ed", color: "#b42318", marginBottom: "20px" }}>⚠️ {statusError}</div>}
       <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "18px" }}>
         <div style={{ padding: "24px", borderRadius: "22px", background: valveOn ? "#edf8ef" : "#f5f8f1", border: "1px solid #dfe8d8" }}><div style={{ color: "#68736b", fontSize: "13px", fontWeight: "700", letterSpacing: "1px" }}>STATO IRRIGAZIONE</div><div style={{ fontSize: "30px", fontWeight: "800", color: valveOn ? "#2f6b3c" : "#59645c", marginTop: "10px" }}>{loadingStatus ? "Caricamento..." : valveOn ? "🟢 ATTIVA" : "⚪ SPENTA"}</div><div style={{ marginTop: "8px", color: "#68736b" }}>Dispositivo: Irrigazione</div><div style={{ fontSize: "12px", color: "#8a918b", marginTop: "4px" }}>{DEVICE_ID}</div></div>
@@ -246,15 +246,8 @@ export default function Irrigazione() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: "6px" }}>{["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((day) => <div key={day} style={{ textAlign: "center", padding: "8px 2px", fontSize: "12px", fontWeight: "800", color: "#68736b" }}>{day}</div>)}{calendarDays.map((day, index) => { if (!day) return <div key={`empty-${index}`} />; const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`; const events = historyByDay[key] || []; const planned = plannedEvents.filter((event) => dateKey(event.date) === key); const isToday = key === todayKey; return <div key={key} style={{ minHeight: "92px", padding: "8px", borderRadius: "12px", background: isToday ? "#edf5e9" : "white", border: isToday ? "2px solid #55745b" : "1px solid #dfe8d8", boxSizing: "border-box" }}><div style={{ fontWeight: "800", color: "#354d3b" }}>{day}</div>{events.map((event) => <div key={event.id} style={{ marginTop: "5px", padding: "4px 5px", borderRadius: "7px", background: "#e8f2e6", color: "#35613c", fontSize: "11px", fontWeight: "700" }}>💧 {formatTime(event.date)}</div>)}{planned.map((event) => <div key={event.id} style={{ marginTop: "5px", padding: "4px 5px", borderRadius: "7px", background: "#e8eef8", color: "#365a82", fontSize: "11px", fontWeight: "700" }}>🔵 {event.time}</div>)}</div>; })}</div>
         <div style={{ display: "flex", gap: "18px", flexWrap: "wrap", marginTop: "16px", color: "#68736b", fontSize: "13px" }}><span>💧 Irrigazione effettuata</span><span>🔵 Irrigazione prevista</span></div>
       </section>
-      <section style={{ marginTop: "25px", padding: "25px", borderRadius: "24px", background: "#fffaf2", border: "1px solid #eadfca" }}>
-        <h2 style={{ marginTop: 0, color: "#354d3b", fontFamily: "Georgia, serif" }}>⏱️ Programmi</h2>
-        <p style={{ color: "#68736b" }}>Programmi configurati nel dispositivo: <strong>{tuyaPrograms.length}</strong></p>
-        {programsLoading ? <p>Caricamento programmi…</p> : <div style={{ padding: "16px", borderRadius: "14px", background: "white", border: "1px solid #eadfca", marginTop: "15px" }}>
-          {tuyaPrograms.length === 0 ? <div style={{ color: "#68736b", fontSize: "13px" }}>Nessun programma configurato</div> : tuyaPrograms.map((program) => <div key={`${program.dp}-${program.index}`} style={{ marginTop: "4px", color: "#59645c", fontSize: "13px" }}><strong>{program.time}</strong> · {program.durationMinutes} min<br />Ogni {program.intervalDays ? `${program.intervalDays} giorni` : "settimana"}{program.startDate ? ` · dal ${new Date(`${program.startDate}T00:00:00`).toLocaleDateString("it-IT")}` : ""}</div>)}
-        </div>}
-        <p style={{ marginTop: "16px", fontSize: "13px", color: "#7a827a" }}>ℹ️ I programmi mostrati sono quelli attualmente letti dal dispositivo Tuya.</p>
-      </section>
-      <section style={{ marginTop: "25px" }}><h2 style={{ color: "#354d3b", fontFamily: "Georgia, serif" }}>🌿 Registro annaffiature delle piante</h2><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>{plants.map((plant) => { const watered = lastWatered[plant.name]; let wateredText = ""; if (watered) { const date = new Date(watered); const today = new Date(); const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()); const startWatered = new Date(date.getFullYear(), date.getMonth(), date.getDate()); const days = Math.floor((startToday - startWatered) / 86400000); wateredText = days === 0 ? "oggi" : days === 1 ? "ieri" : `${days} giorni fa`; } return <article key={plant.name} style={{ background: "#f5f8f1", border: "1px solid #dfe8d8", borderRadius: "18px", padding: "20px" }}><div style={{ fontSize: "34px" }}>{plant.icon}</div><h3 style={{ color: "#354d3b", margin: "8px 0" }}>{plant.name}</h3><p style={{ color: "#59645c" }}>{plant.water}</p>{watered && <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#59645c" }}>Ultima: {wateredText}<button onClick={() => eliminaUltimaAnnaffiatura(plant.name)} title="Cancella ultima annaffiatura" style={{ border: "none", background: "transparent", color: "#c62828", cursor: "pointer", fontSize: "17px", fontWeight: "800" }}>✕</button></div>}<button onClick={() => annaffia(plant.name)} style={{ marginTop: "12px", padding: "10px 16px", border: "none", borderRadius: "12px", background: "#55745b", color: "white", cursor: "pointer", fontWeight: "700" }}>💧 Annaffiata oggi</button></article>; })}</div></section>
+      <section style={{ marginTop: "25px", padding: "25px", borderRadius: "24px", background: "#fffaf2", border: "1px solid #eadfca" }}><h2 style={{ marginTop: 0, color: "#354d3b", fontFamily: "Georgia, serif" }}>⏱️ Programmi</h2><p style={{ color: "#68736b" }}>Programmi configurati nel dispositivo: <strong>{tuyaPrograms.length}</strong>{programNum != null ? ` · program_num ${programNum}` : ""}</p>{programsLoading ? <p>Caricamento programmi…</p> : <div style={{ padding: "16px", borderRadius: "14px", background: "white", border: "1px solid #eadfca", marginTop: "15px" }}>{tuyaPrograms.length === 0 ? <div style={{ color: "#68736b", fontSize: "13px" }}>Nessun programma configurato</div> : tuyaPrograms.map((program) => <div key={`${program.dp}-${program.index}`} style={{ marginTop: "4px", color: "#59645c", fontSize: "13px" }}><strong>{program.time}</strong> · {program.durationMinutes} min<br />Ogni {program.intervalDays ? `${program.intervalDays} giorni` : "settimana"}{program.startDate ? ` · dal ${new Date(`${program.startDate}T00:00:00`).toLocaleDateString("it-IT")}` : ""}</div>)}</div>}</section>
+      <section style={{ marginTop: "25px" }}><h2 style={{ color: "#354d3b", fontFamily: "Georgia, serif" }}>🌿 Registro annaffiature</h2><p style={{ color: "#68736b", marginTop: 0 }}>Piante da interno e bonsai salvati nel database.</p>{wateringLoading ? <p>Caricamento piante…</p> : wateringPlants.length === 0 ? <p style={{ color: "#68736b" }}>Nessuna pianta presente.</p> : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>{wateringPlants.map((plant) => { const record = getWateringRecord(plant); const key = `${plant.collection}:${plant.id}`; return <article key={key} style={{ background: "#f5f8f1", border: "1px solid #dfe8d8", borderRadius: "18px", padding: "20px" }}><h3 style={{ color: "#354d3b", margin: "0 0 12px" }}>{plant.name}</h3>{record && <div style={{ fontSize: "13px", color: "#59645c", marginBottom: "12px" }}>Ultima annaffiatura: <strong>{formatWateredDate(record.watered_at)}</strong></div>}<button onClick={() => annaffia(plant)} disabled={wateringSaving === key} style={{ padding: "10px 16px", border: "none", borderRadius: "12px", background: "#55745b", color: "white", cursor: wateringSaving === key ? "default" : "pointer", fontWeight: "700", opacity: wateringSaving === key ? 0.6 : 1 }}>{wateringSaving === key ? "Salvataggio…" : "💧 Annaffiata oggi"}</button></article>; })}</div>}</section>
     </main>
   );
 }
