@@ -45,8 +45,8 @@ export default function Irrigazione() {
   const [switchLoading, setSwitchLoading] = useState(false);
 
   const [irrigationHistory, setIrrigationHistory] = useState([]);
- const [tuyaPrograms, setTuyaPrograms] = useState([]);
- const [programsLoading, setProgramsLoading] = useState(true);
+  const [tuyaPrograms, setTuyaPrograms] = useState([]);
+  const [programsLoading, setProgramsLoading] = useState(true);
 
   const [lastWatered, setLastWatered] = useState({});
 
@@ -197,11 +197,6 @@ export default function Irrigazione() {
         );
       }
 
-      /*
-       * Registriamo solo l'avvio reale dalla dashboard.
-       * Il successivo refresh dello stato Tuya conferma
-       * lo stato effettivo della valvola.
-       */
       if (value) {
         const event = {
           id: crypto.randomUUID(),
@@ -417,14 +412,6 @@ export default function Irrigazione() {
 
   const nextEvents = [];
 
-  /*
-   * I programmi Tuya sono ancora codificati.
-   * NON inventiamo date/orari.
-   *
-   * Quando completiamo il decoder di
-   * water_program1-4 e irri_time,
-   * questi eventi verranno inseriti qui.
-   */
   useEffect(() => {
     async function loadTuyaPrograms() {
       try {
@@ -474,24 +461,6 @@ export default function Irrigazione() {
     return () => clearInterval(interval);
   }, []);
 
-  /*
-   * Programmi Tuya letti direttamente dal dispositivo.
-   *
-   * NON assumiamo ancora il significato dei byte di
-   * ricorrenza: il formato proprietario del R2603 va
-   * decodificato prima di generare le date.
-   *
-   * Per ora manteniamo l'orario reale del programma
-   * senza inventare il giorno della settimana.
-   */
-  /*
-   * Genera le prossime occorrenze dei programmi Tuya.
-   *
-   * I programmi possono essere:
-   * - settimanali, con weekdays[]
-   * - a intervallo, con intervalDays
-   */
-
   function getTuyaOccurrences(program, daysAhead = 62) {
     const occurrences = [];
 
@@ -508,20 +477,6 @@ export default function Irrigazione() {
 
     const now = new Date();
 
-    /*
-     * PROGRAMMI A INTERVALLO
-     *
-     * Per il programma attualmente presente
-     * alle 20:00, Tuya usa una ricorrenza
-     * ogni 3 giorni.
-     *
-     * La sequenza corretta è:
-     * 1, 4, 7, 10, 13, 16...
-     *
-     * L'ancora non deve essere "oggi", altrimenti
-     * ogni aggiornamento della pagina sposterebbe
-     * artificialmente la sequenza.
-     */
     if (
       program.recurrenceType === 1 &&
       Number.isInteger(program.intervalDays) &&
@@ -530,17 +485,17 @@ export default function Irrigazione() {
       const intervalDays = program.intervalDays;
 
       /*
-       * Ancora della programmazione Tuya.
+       * Le date di inizio note sono associate al singolo
+       * orario/programmazione. Non usiamo più una sola
+       * ancora per tutti i programmi.
        *
-       * Ogni programmazione a intervallo ha la propria
-       * data di partenza osservata. Il dispositivo non
-       * espone nel record raw decodificato un campo data
-       * separato, quindi per i programmi che conosciamo
-       * associamo esplicitamente l'ancora alla programmazione.
+       * 20:00 -> 01/09/2026, ogni 3 giorni
+       * 06:00 -> 05/09/2026, ogni 4 giorni
+       * 12:00 -> 04/09/2026, ogni 2 giorni
        *
-       * 01/09/2026 -> programma 20:00 ogni 3 giorni
-       * 05/09/2026 -> programma 06:00 ogni 4 giorni
-       * 04/09/2026 -> programma 12:00 ogni 2 giorni
+       * Queste ancore riflettono le date di partenza
+       * effettivamente impostate nell'app Tuya durante
+       * i test.
        */
       const intervalAnchors = {
         "20:00": new Date(
@@ -575,11 +530,6 @@ export default function Irrigazione() {
       const anchor =
         intervalAnchors[program.time];
 
-      /*
-       * Se in futuro compare un nuovo programma a
-       * intervallo non ancora associato a una data di
-       * partenza, non inventiamo una data nel calendario.
-       */
       if (!anchor) {
         return occurrences;
       }
@@ -613,9 +563,6 @@ export default function Irrigazione() {
       return occurrences;
     }
 
-    /*
-     * TYPE 1 = ricorrenza settimanale.
-     */
     if (
       program.recurrenceType === 1 &&
       Array.isArray(program.weekdays) &&
@@ -673,16 +620,6 @@ export default function Irrigazione() {
       return occurrences;
     }
 
-    /*
-     * TYPE 4:
-     *
-     * Per ora NON lo mostriamo nel calendario.
-     *
-     * I dati type 4 che il dispositivo continua
-     * a restituire possono rappresentare uno slot
-     * rimasto nel dato grezzo dopo la cancellazione
-     * dall'app Tuya.
-     */
     return occurrences;
   }
 
