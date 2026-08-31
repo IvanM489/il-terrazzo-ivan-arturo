@@ -78,32 +78,9 @@ function decodeProgramBlock(bytes, dp, index) {
   }
 
   const id = bytes[0];
-
-  /*
-   * Struttura del record osservata sul R2603:
-   *
-   * byte 0    = ID programma
-   * byte 1    = tipo/flag ricorrenza
-   * byte 2    = valore ricorrenza
-   * byte 3-4  = ora, minuti dalla mezzanotte
-   * byte 5-6  = durata, minuti
-   * byte 7+   = dati aggiuntivi
-   */
-
   const recurrenceType = bytes[1];
   const recurrenceValue = bytes[2];
 
-  /*
-   * Ricorrenza a intervallo.
-   *
-   * Nei record type 1:
-   *   byte 13 = 1
-   *   byte 14 = N-1
-   *
-   * Nei record type 4:
-   *   byte 8 contiene il valore osservato
-   *   dell'intervallo.
-   */
   let intervalDays = null;
 
   if (recurrenceType === 1 && bytes[13] === 1) {
@@ -127,20 +104,6 @@ function decodeProgramBlock(bytes, dp, index) {
       intervalDays = intervalCode + 1;
     }
   }
-
-  /*
-   * Ricorrenza Tuya.
-   *
-   * TYPE 1:
-   *   byte 13 = 1 -> intervallo
-   *   byte 14 = intervallo - 1
-   *
-   *   byte 13 = 2 -> settimanale
-   *   byte 17 = bitmask giorni
-   *
-   * TYPE 4:
-   *   intervallo in byte 8, codificato come N - 1.
-   */
 
   let weekdayMask = 0;
   let weekdays = [];
@@ -195,23 +158,17 @@ function decodeProgramBlock(bytes, dp, index) {
     dp,
     index,
     id,
-
     enabled:
       bytes[1] !== 0,
-
     recurrenceType,
     recurrenceValue,
     intervalDays,
-
     weekdayMask,
     weekdays,
-    intervalDays,
-
     timeMinutes:
       validTime
         ? timeMinutes
         : null,
-
     time:
       validTime
         ? `${String(
@@ -220,18 +177,14 @@ function decodeProgramBlock(bytes, dp, index) {
             timeMinutes % 60
           ).padStart(2, "0")}`
         : null,
-
     durationMinutes:
       validDuration
         ? duration
         : null,
-
     recurrenceBytes:
       bytes.slice(7),
-
     rawBytes:
       bytes,
-
     rawHex:
       Buffer.from(bytes)
         .toString("hex")
@@ -256,23 +209,17 @@ function decodeDP(dp, value) {
     Buffer.from(value, "base64");
 
   const bytes = [...buffer];
-
   const records = [];
 
-  /*
-   * STRUTTURA CONFERMATA:
-   * 18 byte per programmazione.
-   */
   for (
     let offset = 0;
     offset + 18 <= bytes.length;
     offset += 18
   ) {
-    const block =
-      bytes.slice(
-        offset,
-        offset + 18
-      );
+    const block = bytes.slice(
+      offset,
+      offset + 18
+    );
 
     const record =
       decodeProgramBlock(
@@ -282,31 +229,119 @@ function decodeDP(dp, value) {
       );
 
     if (record) {
-      records.push(record);
+      records.push({
+        ...record,
+        tuyaBlockOffset: offset,
+      });
     }
   }
 
   return {
     configured: true,
-
     recordCount:
       records.length,
-
     records,
-
     byteLength:
       bytes.length,
-
     raw: value,
-
     hex:
       buffer
         .toString("hex")
         .match(/.{1,2}/g)
         ?.join(" ") || "",
-
     bytes,
   };
+}
+
+function normalizeTimerDate(value) {
+  if (!value || value === "00000000") {
+    return null;
+  }
+
+  const match = String(value).match(
+    /^(\d{4})(\d{2})(\d{2})$/
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const [, year, month, day] = match;
+  const date = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day)
+  );
+
+  if (
+    date.getFullYear() !== Number(year) ||
+    date.getMonth() !== Number(month) - 1 ||
+    date.getDate() !== Number(day)
+  ) {
+    return null;
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function timerMatchesRecord(timer, record) {
+  if (!Array.isArray(timer?.functions)) {
+    return false;
+  }
+
+  return timer.functions.some((fn) => {
+    if (fn?.code !== record.dp) {
+      return false;
+    }
+
+    const value = fn?.value;
+
+    if (value === record.raw) {
+      return true;
+    }
+
+    if (
+      value &&
+      typeof value === "object"
+    ) {
+      return (
+        value.value === record.raw ||
+        value.raw === record.raw
+      );
+    }
+
+    return false;
+  });
+}
+
+function attachTimerDates(records, timers) {
+  if (!Array.isArray(timers) || timers.length === 0) {
+    return records;
+  }
+
+  return records.map((record) => {
+    const timer = timers.find((item) =>
+      timerMatchesRecord(item, record)
+    );
+
+    if (!timer) {
+      return record;
+    }
+
+    return {
+      ...record,
+      startDate:
+        normalizeTimerDate(timer.date),
+      timerId:
+        timer.timer_id ||
+        timer.time_id ||
+        null,
+      timerLoops:
+        timer.loops || null,
+      timerTimezone:
+        timer.timezone_id || null,
+    };
+  });
 }
 
 export async function GET() {
@@ -375,40 +410,94 @@ export async function GET() {
         );
     }
 
+    /*
+     * La data di inizio della ricorrenza non è presente
+     * nei 18 byte del DP water_programX. Tuya espone però
+     * i timer reali del dispositivo tramite il Device Timer
+     * API, inclusa la loro data di partenza.
+     *
+     * Questo permette al calendario di seguire automaticamente
+     * i programmi creati/modificati nell'app Tuya, senza date
+     * hardcoded e senza dover registrare manualmente ogni nuovo
+     * programma.
+     */
+    let timers = [];
+
+    try {
+      const timersResult =
+        await tuyaRequest(
+          "GET",
+          `/v2.0/cloud/timer/device/${DEVICE_ID}`,
+          token
+        );
+
+      if (timersResult.success) {
+        timers =
+          timersResult.result || [];
+      } else {
+        console.warn(
+          "Tuya Device Timer non disponibile:",
+          timersResult
+        );
+      }
+    } catch (timerError) {
+      console.warn(
+        "Errore lettura Tuya Device Timer:",
+        timerError
+      );
+    }
+
     const records =
       PROGRAM_CODES.flatMap(
         (code) =>
-          decoded[code].records
+          attachTimerDates(
+            decoded[code].records,
+            timers
+          )
       );
+
+    for (const code of PROGRAM_CODES) {
+      decoded[code].records =
+        records.filter(
+          (record) => record.dp === code
+        );
+    }
 
     return NextResponse.json({
       success: true,
-
       deviceId:
         DEVICE_ID,
-
       programNum:
         values.program_num ??
         null,
-
       irriTime:
         values.irri_time ??
         null,
-
-      /*
-       * Tutti i DP
-       */
       programs:
         decoded,
-
-      /*
-       * Tutti i blocchi di tutti
-       * i programmi.
-       */
       records,
-
       totalRecords:
         records.length,
+      timers: timers.map((timer) => ({
+        timerId:
+          timer.timer_id ||
+          timer.time_id ||
+          null,
+        aliasName:
+          timer.alias_name || null,
+        date:
+          timer.date || null,
+        time:
+          timer.time || null,
+        loops:
+          timer.loops || null,
+        enabled:
+          timer.enable ?? null,
+        timezoneId:
+          timer.timezone_id || null,
+        functions:
+          timer.functions || [],
+      })),
     });
   } catch (error) {
     console.error(
