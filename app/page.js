@@ -6,7 +6,7 @@ import { createClient } from "../lib/supabase/client";
 const sections = [
   {
     icon: "🌿",
-    title: "Le mie piante",
+    title: "Piante del terrazzo",
     text: "Gestisci le tue piante",
     color: "green",
     href: "/piante",
