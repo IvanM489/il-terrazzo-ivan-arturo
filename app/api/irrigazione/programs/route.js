@@ -31,56 +31,16 @@ async function getToken() {
 }
 
 /*
- * Nei programmi a intervallo il blocco Tuya contiene anche l'ancora della
- * programmazione. Nei record osservati del dispositivo:
+ * Decodifica esclusivamente i campi che abbiamo verificato con certezza.
  *
- *   recurrenceBytes[6]  = 1  -> modalità intervallo
- *   recurrenceBytes[7]  = intervalDays - 1
- *   recurrenceBytes[8]  = costante del formato
- *   recurrenceBytes[9]  = giorno codificato
+ * ATTENZIONE: il formato dei byte di ricorrenza Tuya non contiene, nei
+ * record osservati, una data ISO direttamente utilizzabile. In particolare
+ * bytes[16] NON viene più interpretato come "giorno del mese": quella
+ * assunzione produceva ancore errate (es. 11 settembre invece di 1 settembre).
  *
- * Il giorno è memorizzato con alcuni bit di servizio: i 5 bit bassi sono
- * il giorno del mese. Esempi osservati direttamente sul dispositivo:
- *   0x24 -> 4 settembre
- *   0x25 -> 5 settembre
- *   0x26 -> 6 settembre
- *   0x27 -> 7 settembre
- *
- * Il byte successivo al valore dell'intervallo identifica la famiglia di
- * calendario del formato Tuya, ma non è necessario per ricostruire l'anno/
- * mese dell'ancora quando il dispositivo è interrogato: scegliamo il mese
- * più vicino alla data corrente compatibile con il giorno codificato.
- * Questo evita qualsiasi data hardcoded nel frontend.
+ * L'ancora viene quindi ricavata, quando possibile, dal timer Tuya reale o
+ * dallo storico delle esecuzioni del dispositivo.
  */
-function decodeIntervalStartDate(bytes) {
-  if (bytes.length < 18 || bytes[13] !== 1) return null;
-
-  const encodedDay = Number(bytes[16]);
-  if (!Number.isInteger(encodedDay)) return null;
-
-  const day = encodedDay & 0x1f;
-  if (day < 1 || day > 31) return null;
-
-  const now = new Date();
-  const candidates = [];
-
-  for (let monthOffset = -2; monthOffset <= 3; monthOffset++) {
-    const base = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
-    const year = base.getFullYear();
-    const month = base.getMonth();
-    const candidate = new Date(year, month, day);
-    if (candidate.getFullYear() !== year || candidate.getMonth() !== month || candidate.getDate() !== day) continue;
-    candidates.push(candidate);
-  }
-
-  if (!candidates.length) return null;
-
-  candidates.sort((a, b) => Math.abs(a.getTime() - now.getTime()) - Math.abs(b.getTime() - now.getTime()));
-  const anchor = candidates[0];
-
-  return `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, "0")}-${String(anchor.getDate()).padStart(2, "0")}`;
-}
-
 function decodeProgramBlock(bytes, dp, index) {
   if (bytes.length < 18) return null;
   const recurrenceType = bytes[1];
@@ -88,13 +48,9 @@ function decodeProgramBlock(bytes, dp, index) {
   let intervalDays = null;
   let weekdayMask = 0;
   const weekdays = [];
-  let startDate = null;
-  let startDateSource = null;
 
   if (recurrenceType === 1 && bytes[13] === 1 && Number.isInteger(bytes[14])) {
     intervalDays = bytes[14] + 1;
-    startDate = decodeIntervalStartDate(bytes);
-    if (startDate) startDateSource = "tuya-program-block";
   }
 
   if (recurrenceType === 4 && Number.isInteger(bytes[8]) && bytes[8] >= 1) intervalDays = bytes[8] + 1;
@@ -112,7 +68,8 @@ function decodeProgramBlock(bytes, dp, index) {
   return {
     dp, index, id: bytes[0], enabled: bytes[1] !== 0,
     recurrenceType, recurrenceValue, intervalDays, weekdayMask, weekdays,
-    startDate, startDateSource,
+    startDate: null,
+    startDateSource: null,
     timeMinutes: validTime ? timeMinutes : null,
     time: validTime ? `${String(Math.floor(timeMinutes / 60)).padStart(2, "0")}:${String(timeMinutes % 60).padStart(2, "0")}` : null,
     durationMinutes: validDuration ? duration : null,
@@ -162,7 +119,15 @@ function attachTimerDates(records, timers) {
   return records.map((record) => {
     const timer = timers.find((item) => timerMatchesRecord(item, record));
     if (!timer) return record;
-    return { ...record, startDate: normalizeTimerDate(timer.date) || record.startDate, timerId: timer.timer_id || timer.time_id || null, timerLoops: timer.loops || null, timerTimezone: timer.timezone_id || null, startDateSource: normalizeTimerDate(timer.date) ? "tuya-device-timer" : record.startDateSource };
+    const timerDate = normalizeTimerDate(timer.date);
+    return {
+      ...record,
+      startDate: timerDate,
+      timerId: timer.timer_id || timer.time_id || null,
+      timerLoops: timer.loops || null,
+      timerTimezone: timer.timezone_id || null,
+      startDateSource: timerDate ? "tuya-device-timer" : null,
+    };
   });
 }
 
@@ -209,6 +174,10 @@ function localDateKey(timestamp) {
   return `${parts.find((p) => p.type === "year")?.value}-${parts.find((p) => p.type === "month")?.value}-${parts.find((p) => p.type === "day")?.value}`;
 }
 
+/*
+ * Lo storico viene usato come ancora soltanto quando il record non ha già
+ * una data proveniente dal timer Tuya. Non inventiamo una data futura.
+ */
 function inferStartDatesFromHistory(records, historyTimes) {
   if (!historyTimes.length) return records;
   return records.map((record) => {
