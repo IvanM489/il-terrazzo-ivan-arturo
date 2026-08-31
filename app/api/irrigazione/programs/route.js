@@ -8,17 +8,19 @@ const PROGRAM_CODES = ["water_program1", "water_program2", "water_program3", "wa
 const APP_TIME_ZONE = "Europe/Rome";
 
 function sign(secret, text) { return crypto.createHmac("sha256", secret).update(text).digest("hex").toUpperCase(); }
+function sha256(value = "") { return crypto.createHash("sha256").update(value).digest("hex"); }
 
 async function tuyaRequest(method, path, token = "") {
   const clientId = process.env.TUYA_ACCESS_ID;
   const secret = process.env.TUYA_ACCESS_SECRET;
   const t = Date.now().toString();
-  const bodyHash = crypto.createHash("sha256").update("").digest("hex");
-  const stringToSign = `${method}\n${bodyHash}\n\n${path}`;
-  const signText = clientId + token + t + stringToSign;
+  const nonce = crypto.randomUUID();
+  const bodyHash = sha256("");
+  const stringToSign = `${method.toUpperCase()}\n${bodyHash}\n\n${path}`;
+  const signText = clientId + token + t + nonce + stringToSign;
   const response = await fetch(`${BASE}${path}`, {
     method,
-    headers: { client_id: clientId, access_token: token, t, sign_method: "HMAC-SHA256", sign: sign(secret, signText) },
+    headers: { client_id: clientId, access_token: token, t, nonce, sign_method: "HMAC-SHA256", sign: sign(secret, signText) },
     cache: "no-store",
   });
   return response.json();
@@ -30,32 +32,17 @@ async function getToken() {
   return result.result.access_token;
 }
 
-/*
- * Tentativo finale: nei record osservati il byte 16 non è il giorno del mese
- * del mese corrente. I valori 11, 37 e 39 hanno rispettivamente i 5 bit bassi
- * 11, 5 e 7. Per una ricorrenza a intervallo possiamo quindi usare come ancora
- * l'ultima data passata con quel giorno del mese.
- *
- * Esempio verificabile sul caso che ci interessa:
- * 11 agosto + 3 giorni -> 14, 17, 20, 23, 26, 29 agosto -> 1, 4 settembre.
- */
 function decodeIntervalStartDate(bytes) {
   if (bytes.length < 18 || bytes[13] !== 1) return null;
   const encoded = Number(bytes[16]);
   if (!Number.isInteger(encoded)) return null;
-
   const day = encoded & 0x1f;
   if (day < 1 || day > 31) return null;
-
   const now = new Date();
   for (let monthOffset = 0; monthOffset >= -12; monthOffset--) {
     const candidate = new Date(now.getFullYear(), now.getMonth() + monthOffset, day);
-    if (candidate.getFullYear() !== now.getFullYear() && monthOffset === 0) continue;
-    if (candidate.getMonth() !== ((now.getMonth() + monthOffset) % 12 + 12) % 12) continue;
     if (candidate.getDate() !== day) continue;
-    if (candidate <= now) {
-      return `${candidate.getFullYear()}-${String(candidate.getMonth() + 1).padStart(2, "0")}-${String(candidate.getDate()).padStart(2, "0")}`;
-    }
+    if (candidate <= now) return `${candidate.getFullYear()}-${String(candidate.getMonth() + 1).padStart(2, "0")}-${String(candidate.getDate()).padStart(2, "0")}`;
   }
   return null;
 }
@@ -75,9 +62,7 @@ function decodeProgramBlock(bytes, dp, index) {
     startDate = decodeIntervalStartDate(bytes);
     if (startDate) startDateSource = "tuya-program-block";
   }
-
   if (recurrenceType === 4 && Number.isInteger(bytes[8]) && bytes[8] >= 1) intervalDays = bytes[8] + 1;
-
   if (recurrenceType === 1 && bytes[13] === 2) {
     weekdayMask = bytes[17] ?? 0;
     for (let day = 0; day < 7; day++) if (weekdayMask & (1 << day)) weekdays.push(day);
@@ -174,7 +159,8 @@ async function getTimingLogs(token) {
 async function getWateringHistory(token) {
   const endTime = Date.now();
   const startTime = endTime - 180 * 24 * 60 * 60 * 1000;
-  const path = `/v2.0/cloud/thing/${DEVICE_ID}/report-logs?codes=switch,valve_status&start_time=${startTime}&end_time=${endTime}&size=100`;
+  const query = `codes=${encodeURIComponent("switch,valve_status")}&start_time=${startTime}&end_time=${endTime}&size=100`;
+  const path = `/v2.0/cloud/thing/${DEVICE_ID}/report-logs?${query}`;
   try {
     const result = await tuyaRequest("GET", path, token);
     if (!result.success || !Array.isArray(result.result?.logs)) return [];
