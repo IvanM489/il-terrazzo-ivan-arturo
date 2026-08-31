@@ -4,38 +4,42 @@ import { createClient } from "../../../../lib/supabase/server";
 
 const TUYA_BASE_URL = "https://openapi.tuyaeu.com";
 const DEVICE_ID = "bf4f9c13a84f59ac39dybk";
-
-function sha256(value = "") {
-  return crypto.createHash("sha256").update(value).digest("hex");
-}
+const EMPTY_BODY_SHA256 = crypto.createHash("sha256").update("").digest("hex");
 
 function hmac(secret, value) {
   return crypto.createHmac("sha256", secret).update(value).digest("hex").toUpperCase();
 }
 
-// Use the exact nonce-based signer already proven to work by /api/irrigazione/programs.
-function signRequest(method, path, token = "") {
-  const clientId = process.env.TUYA_ACCESS_ID;
-  const secret = process.env.TUYA_ACCESS_SECRET;
-  const t = Date.now().toString();
-  const nonce = crypto.randomUUID();
-  const bodyHash = sha256("");
-  const stringToSign = `${method.toUpperCase()}\n${bodyHash}\n\n${path}`;
-  const sign = hmac(secret, clientId + token + t + nonce + stringToSign);
-  return { t, nonce, sign };
+function buildStringToSign(method, path) {
+  // Tuya canonicalizes the URL for signing with decoded query values.
+  // The API Explorer request for report-logs uses no custom Signature-Headers
+  // and no nonce, so the third line of stringToSign is intentionally empty.
+  const canonicalUrl = decodeURIComponent(path);
+  return `${method.toUpperCase()}\n${EMPTY_BODY_SHA256}\n\n${canonicalUrl}`;
+}
+
+function signTokenRequest(clientId, secret, t, path) {
+  const stringToSign = buildStringToSign("GET", path);
+  return hmac(secret, `${clientId}${t}${stringToSign}`);
+}
+
+function signBusinessRequest(clientId, secret, token, t, path) {
+  const stringToSign = buildStringToSign("GET", path);
+  return hmac(secret, `${clientId}${token}${t}${stringToSign}`);
 }
 
 async function getToken() {
   const clientId = process.env.TUYA_ACCESS_ID;
+  const secret = process.env.TUYA_ACCESS_SECRET;
   const path = "/v1.0/token?grant_type=1";
-  const { t, nonce, sign } = signRequest("GET", path);
+  const t = Date.now().toString();
+  const sign = signTokenRequest(clientId, secret, t, path);
 
   const response = await fetch(`${TUYA_BASE_URL}${path}`, {
     method: "GET",
     headers: {
       client_id: clientId,
       t,
-      nonce,
       sign_method: "HMAC-SHA256",
       sign,
     },
@@ -51,7 +55,9 @@ async function getToken() {
 
 async function tuyaGet(path, token) {
   const clientId = process.env.TUYA_ACCESS_ID;
-  const { t, nonce, sign } = signRequest("GET", path, token);
+  const secret = process.env.TUYA_ACCESS_SECRET;
+  const t = Date.now().toString();
+  const sign = signBusinessRequest(clientId, secret, token, t, path);
 
   const response = await fetch(`${TUYA_BASE_URL}${path}`, {
     method: "GET",
@@ -59,9 +65,9 @@ async function tuyaGet(path, token) {
       client_id: clientId,
       access_token: token,
       t,
-      nonce,
       sign_method: "HMAC-SHA256",
       sign,
+      "Content-Type": "application/json",
     },
     cache: "no-store",
   });
@@ -82,7 +88,8 @@ export async function GET(request) {
     const startTime = endTime - days * 24 * 60 * 60 * 1000;
     const token = await getToken();
 
-    // Match the API Explorer query exactly: codes, end_time, size, start_time.
+    // Keep the same parameter order as Tuya API Explorer. The comma is
+    // percent-encoded on the wire and decoded only for the signature.
     const query = `codes=switch%2Cvalve_status&end_time=${endTime}&size=100&start_time=${startTime}`;
     const path = `/v2.0/cloud/thing/${DEVICE_ID}/report-logs?${query}`;
     const result = await tuyaGet(path, token);
