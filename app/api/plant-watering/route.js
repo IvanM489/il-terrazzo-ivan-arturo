@@ -13,7 +13,7 @@ export async function GET() {
     const [indoorResult, bonsaiResult, wateringResult] = await Promise.all([
       supabase.from("indoor_plants").select("id, name"),
       supabase.from("bonsai").select("id, name"),
-      supabase.from(TABLE).select("id, plant_id, plant_type, watered_at").eq("user_id", user.id),
+      supabase.from(TABLE).select("id, plant_id, plant_type, watered_at"),
     ]);
 
     if (indoorResult.error) throw indoorResult.error;
@@ -44,10 +44,10 @@ export async function POST(request) {
     if (!plantId || !ALLOWED_TYPES.includes(plantType)) return NextResponse.json({ error: "Pianta non valida." }, { status: 400 });
 
     const wateredAt = new Date().toISOString();
-    const { error: deleteError } = await supabase.from(TABLE).delete().eq("user_id", user.id).eq("plant_id", plantId).eq("plant_type", plantType);
+    const { error: deleteError } = await supabase.from(TABLE).delete().eq("plant_id", plantId).eq("plant_type", plantType);
     if (deleteError) throw deleteError;
 
-    const { data, error: insertError } = await supabase.from(TABLE).insert({ user_id: user.id, plant_id: plantId, plant_type: plantType, watered_at: wateredAt }).select("id, plant_id, plant_type, watered_at").single();
+    const { data, error: insertError } = await supabase.from(TABLE).insert({ plant_id: plantId, plant_type: plantType, watered_at: wateredAt }).select("id, plant_id, plant_type, watered_at").single();
     if (insertError) throw insertError;
 
     return NextResponse.json({ success: true, record: data });
