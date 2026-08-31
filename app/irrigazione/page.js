@@ -535,15 +535,45 @@ export default function Irrigazione() {
        * 01/09/2026 è la prima occorrenza osservata
        * per il programma delle 20:00.
        */
-      const anchor = new Date(
-        2026,
-        8,
-        1,
-        hours,
-        minutes,
-        0,
-        0
-      );
+      /*
+       * Ogni programmazione a intervallo ha la propria
+       * data di partenza. Non possiamo usare una sola
+       * ancora per tutti i programmi: il programma delle
+       * 20:00 parte il 01/09/2026, mentre quello delle
+       * 06:00 parte il 05/09/2026.
+       */
+      const intervalAnchors = {
+        "20:00": new Date(
+          2026,
+          8,
+          1,
+          hours,
+          minutes,
+          0,
+          0
+        ),
+        "06:00": new Date(
+          2026,
+          8,
+          5,
+          hours,
+          minutes,
+          0,
+          0
+        ),
+      };
+
+      const anchor =
+        intervalAnchors[program.time];
+
+      /*
+       * Se in futuro compare un nuovo programma a
+       * intervallo non ancora associato a una data di
+       * partenza, non inventiamo una data nel calendario.
+       */
+      if (!anchor) {
+        return occurrences;
+      }
 
       for (
         let date = new Date(anchor);
