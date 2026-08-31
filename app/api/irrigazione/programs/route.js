@@ -345,13 +345,15 @@ function attachTimerDates(records, timers) {
 }
 
 function flattenLegacyTimers(result) {
-  if (!Array.isArray(result)) {
-    return [];
-  }
+  const categories = Array.isArray(result)
+    ? result
+    : result && typeof result === "object"
+      ? [result]
+      : [];
 
   const timers = [];
 
-  for (const category of result) {
+  for (const category of categories) {
     const groups =
       Array.isArray(category?.groups)
         ? category.groups
@@ -370,6 +372,224 @@ function flattenLegacyTimers(result) {
   }
 
   return timers;
+}
+
+function parseMaybeJson(value) {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function collectDateCandidates(value, output = []) {
+  if (value == null) {
+    return output;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim();
+
+    const ymd = normalized.match(
+      /^(\d{4})([-/]?)(\d{2})\2(\d{2})$/
+    );
+
+    if (ymd) {
+      const candidate = normalizeTimerDate(
+        `${ymd[1]}${ymd[3]}${ymd[4]}`
+      );
+
+      if (candidate) {
+        output.push(candidate);
+      }
+    }
+
+    const embedded = normalized.match(
+      /(20\d{2})[-/]?(0[1-9]|1[0-2])[-/]?(0[1-9]|[12]\d|3[01])/g
+    );
+
+    for (const match of embedded) {
+      const compact = match.replace(/[-/]/g, "");
+      const candidate = normalizeTimerDate(compact);
+      if (candidate) {
+        output.push(candidate);
+      }
+    }
+
+    const parsed = parseMaybeJson(normalized);
+    if (parsed !== normalized) {
+      collectDateCandidates(parsed, output);
+    }
+
+    return output;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectDateCandidates(item, output);
+    }
+    return output;
+  }
+
+  if (typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) {
+      if (/date|start|begin/i.test(key)) {
+        collectDateCandidates(item, output);
+      } else if (typeof item === "object" || typeof item === "string") {
+        collectDateCandidates(item, output);
+      }
+    }
+  }
+
+  return output;
+}
+
+function logMatchesRecord(log, record) {
+  if (!log) {
+    return false;
+  }
+
+  if (log.code && log.code !== record.dp) {
+    return false;
+  }
+
+  const rawValue = log.value ?? log.event_value;
+
+  if (rawValue === record.raw) {
+    return true;
+  }
+
+  if (typeof rawValue === "string") {
+    const parsed = parseMaybeJson(rawValue);
+    if (parsed !== rawValue) {
+      return logMatchesRecord(
+        { ...log, value: parsed },
+        record
+      );
+    }
+  }
+
+  if (rawValue && typeof rawValue === "object") {
+    if (
+      rawValue.raw === record.raw ||
+      rawValue.value === record.raw
+    ) {
+      return true;
+    }
+
+    if (Array.isArray(rawValue.functions)) {
+      return rawValue.functions.some(
+        (fn) =>
+          fn?.code === record.dp &&
+          (fn?.value === record.raw ||
+            fn?.value?.raw === record.raw ||
+            fn?.value?.value === record.raw)
+      );
+    }
+  }
+
+  return false;
+}
+
+function attachTimingLogDates(records, timingLogs) {
+  if (!Array.isArray(timingLogs) || timingLogs.length === 0) {
+    return records;
+  }
+
+  return records.map((record) => {
+    const matchingLogs = timingLogs.filter((log) =>
+      logMatchesRecord(log, record)
+    );
+
+    for (const log of matchingLogs) {
+      const dates = collectDateCandidates(
+        log.value ?? log.event_value
+      );
+
+      if (dates.length > 0) {
+        return {
+          ...record,
+          startDate: dates[0],
+          startDateSource: "tuya-timing-log",
+          timingLogEventTime:
+            log.event_time || null,
+        };
+      }
+    }
+
+    return record;
+  });
+}
+
+async function getTimingLogs(token) {
+  const endTime = Date.now();
+  const startTime =
+    endTime -
+    30 * 24 * 60 * 60 * 1000;
+
+  try {
+    const path =
+      `/v2.0/cloud/thing/${DEVICE_ID}/logs` +
+      `?type=10&start_time=${startTime}&end_time=${endTime}&size=100`;
+
+    const result =
+      await tuyaRequest(
+        "GET",
+        path,
+        token
+      );
+
+    if (result.success) {
+      return Array.isArray(result.result?.logs)
+        ? result.result.logs
+        : [];
+    }
+
+    console.warn(
+      "Tuya timing logs v2 non disponibili:",
+      result
+    );
+  } catch (error) {
+    console.warn(
+      "Errore Tuya timing logs v2:",
+      error
+    );
+  }
+
+  try {
+    const path =
+      `/v1.0/devices/${DEVICE_ID}/logs` +
+      `?type=10&start_time=${startTime}&end_time=${endTime}&size=100`;
+
+    const result =
+      await tuyaRequest(
+        "GET",
+        path,
+        token
+      );
+
+    if (result.success) {
+      return Array.isArray(result.result?.list)
+        ? result.result.list
+        : [];
+    }
+
+    console.warn(
+      "Tuya timing logs legacy non disponibili:",
+      result
+    );
+  } catch (error) {
+    console.warn(
+      "Errore Tuya timing logs legacy:",
+      error
+    );
+  }
+
+  return [];
 }
 
 export async function GET() {
@@ -438,16 +658,6 @@ export async function GET() {
         );
     }
 
-    /*
-     * I timer Tuya moderni (/v2.0) non sempre espongono
-     * i programmi proprietari di alcuni controller di
-     * irrigazione. Per questi dispositivi l'app Tuya usa
-     * ancora il servizio timer legacy (/v1.0/devices/.../timers),
-     * che contiene la data reale di partenza del programma.
-     *
-     * Proviamo entrambi: prima il servizio moderno, poi quello
-     * legacy. Non vengono introdotte date hardcoded.
-     */
     let timers = [];
 
     try {
@@ -503,7 +713,10 @@ export async function GET() {
       }
     }
 
-    const records =
+    const timingLogs =
+      await getTimingLogs(token);
+
+    let records =
       PROGRAM_CODES.flatMap(
         (code) =>
           attachTimerDates(
@@ -511,6 +724,11 @@ export async function GET() {
             timers
           )
       );
+
+    records = attachTimingLogDates(
+      records,
+      timingLogs
+    );
 
     for (const code of PROGRAM_CODES) {
       decoded[code].records =
@@ -554,6 +772,22 @@ export async function GET() {
           timer.timezone_id || null,
         functions:
           timer.functions || [],
+      })),
+      timingLogs: timingLogs.map((log) => ({
+        eventTime:
+          log.event_time || null,
+        code:
+          log.code || null,
+        eventId:
+          log.event_id || null,
+        eventFrom:
+          log.event_from || null,
+        value:
+          log.value ??
+          log.event_value ??
+          null,
+        status:
+          log.status || null,
       })),
     });
   } catch (error) {
