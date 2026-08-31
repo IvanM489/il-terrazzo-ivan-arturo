@@ -31,16 +31,35 @@ async function getToken() {
 }
 
 /*
- * Decodifica esclusivamente i campi che abbiamo verificato con certezza.
+ * Tentativo finale: nei record osservati il byte 16 non è il giorno del mese
+ * del mese corrente. I valori 11, 37 e 39 hanno rispettivamente i 5 bit bassi
+ * 11, 5 e 7. Per una ricorrenza a intervallo possiamo quindi usare come ancora
+ * l'ultima data passata con quel giorno del mese.
  *
- * ATTENZIONE: il formato dei byte di ricorrenza Tuya non contiene, nei
- * record osservati, una data ISO direttamente utilizzabile. In particolare
- * bytes[16] NON viene più interpretato come "giorno del mese": quella
- * assunzione produceva ancore errate (es. 11 settembre invece di 1 settembre).
- *
- * L'ancora viene quindi ricavata, quando possibile, dal timer Tuya reale o
- * dallo storico delle esecuzioni del dispositivo.
+ * Esempio verificabile sul caso che ci interessa:
+ * 11 agosto + 3 giorni -> 14, 17, 20, 23, 26, 29 agosto -> 1, 4 settembre.
  */
+function decodeIntervalStartDate(bytes) {
+  if (bytes.length < 18 || bytes[13] !== 1) return null;
+  const encoded = Number(bytes[16]);
+  if (!Number.isInteger(encoded)) return null;
+
+  const day = encoded & 0x1f;
+  if (day < 1 || day > 31) return null;
+
+  const now = new Date();
+  for (let monthOffset = 0; monthOffset >= -12; monthOffset--) {
+    const candidate = new Date(now.getFullYear(), now.getMonth() + monthOffset, day);
+    if (candidate.getFullYear() !== now.getFullYear() && monthOffset === 0) continue;
+    if (candidate.getMonth() !== ((now.getMonth() + monthOffset) % 12 + 12) % 12) continue;
+    if (candidate.getDate() !== day) continue;
+    if (candidate <= now) {
+      return `${candidate.getFullYear()}-${String(candidate.getMonth() + 1).padStart(2, "0")}-${String(candidate.getDate()).padStart(2, "0")}`;
+    }
+  }
+  return null;
+}
+
 function decodeProgramBlock(bytes, dp, index) {
   if (bytes.length < 18) return null;
   const recurrenceType = bytes[1];
@@ -48,9 +67,13 @@ function decodeProgramBlock(bytes, dp, index) {
   let intervalDays = null;
   let weekdayMask = 0;
   const weekdays = [];
+  let startDate = null;
+  let startDateSource = null;
 
   if (recurrenceType === 1 && bytes[13] === 1 && Number.isInteger(bytes[14])) {
     intervalDays = bytes[14] + 1;
+    startDate = decodeIntervalStartDate(bytes);
+    if (startDate) startDateSource = "tuya-program-block";
   }
 
   if (recurrenceType === 4 && Number.isInteger(bytes[8]) && bytes[8] >= 1) intervalDays = bytes[8] + 1;
@@ -68,8 +91,7 @@ function decodeProgramBlock(bytes, dp, index) {
   return {
     dp, index, id: bytes[0], enabled: bytes[1] !== 0,
     recurrenceType, recurrenceValue, intervalDays, weekdayMask, weekdays,
-    startDate: null,
-    startDateSource: null,
+    startDate, startDateSource,
     timeMinutes: validTime ? timeMinutes : null,
     time: validTime ? `${String(Math.floor(timeMinutes / 60)).padStart(2, "0")}:${String(timeMinutes % 60).padStart(2, "0")}` : null,
     durationMinutes: validDuration ? duration : null,
@@ -122,11 +144,11 @@ function attachTimerDates(records, timers) {
     const timerDate = normalizeTimerDate(timer.date);
     return {
       ...record,
-      startDate: timerDate,
+      startDate: timerDate || record.startDate,
       timerId: timer.timer_id || timer.time_id || null,
       timerLoops: timer.loops || null,
       timerTimezone: timer.timezone_id || null,
-      startDateSource: timerDate ? "tuya-device-timer" : null,
+      startDateSource: timerDate ? "tuya-device-timer" : record.startDateSource,
     };
   });
 }
@@ -174,10 +196,6 @@ function localDateKey(timestamp) {
   return `${parts.find((p) => p.type === "year")?.value}-${parts.find((p) => p.type === "month")?.value}-${parts.find((p) => p.type === "day")?.value}`;
 }
 
-/*
- * Lo storico viene usato come ancora soltanto quando il record non ha già
- * una data proveniente dal timer Tuya. Non inventiamo una data futura.
- */
 function inferStartDatesFromHistory(records, historyTimes) {
   if (!historyTimes.length) return records;
   return records.map((record) => {
