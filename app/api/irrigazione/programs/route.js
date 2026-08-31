@@ -4,16 +4,10 @@ import { createClient } from "../../../../lib/supabase/server";
 
 const DEVICE_ID = "bf4f9c13a84f59ac39dybk";
 const BASE = "https://openapi.tuyaeu.com";
-const PROGRAM_CODES = [
-  "water_program1",
-  "water_program2",
-  "water_program3",
-  "water_program4",
-];
+const PROGRAM_CODES = ["water_program1", "water_program2", "water_program3", "water_program4"];
+const APP_TIME_ZONE = "Europe/Rome";
 
-function sign(secret, text) {
-  return crypto.createHmac("sha256", secret).update(text).digest("hex").toUpperCase();
-}
+function sign(secret, text) { return crypto.createHmac("sha256", secret).update(text).digest("hex").toUpperCase(); }
 
 async function tuyaRequest(method, path, token = "") {
   const clientId = process.env.TUYA_ACCESS_ID;
@@ -22,19 +16,11 @@ async function tuyaRequest(method, path, token = "") {
   const bodyHash = crypto.createHash("sha256").update("").digest("hex");
   const stringToSign = `${method}\n${bodyHash}\n\n${path}`;
   const signText = clientId + token + t + stringToSign;
-
   const response = await fetch(`${BASE}${path}`, {
     method,
-    headers: {
-      client_id: clientId,
-      access_token: token,
-      t,
-      sign_method: "HMAC-SHA256",
-      sign: sign(secret, signText),
-    },
+    headers: { client_id: clientId, access_token: token, t, sign_method: "HMAC-SHA256", sign: sign(secret, signText) },
     cache: "no-store",
   });
-
   return response.json();
 }
 
@@ -46,28 +32,17 @@ async function getToken() {
 
 function decodeProgramBlock(bytes, dp, index) {
   if (bytes.length < 18) return null;
-
   const recurrenceType = bytes[1];
   const recurrenceValue = bytes[2];
   let intervalDays = null;
   let weekdayMask = 0;
   const weekdays = [];
 
-  // R2603: for the observed interval format, byte 13 selects the
-  // interval-day mode and byte 14 stores N-1 (1=>2 days, 2=>3 days...).
-  if (recurrenceType === 1 && bytes[13] === 1 && Number.isInteger(bytes[14])) {
-    intervalDays = bytes[14] + 1;
-  }
-
-  if (recurrenceType === 4 && Number.isInteger(bytes[8]) && bytes[8] >= 1) {
-    intervalDays = bytes[8] + 1;
-  }
-
+  if (recurrenceType === 1 && bytes[13] === 1 && Number.isInteger(bytes[14])) intervalDays = bytes[14] + 1;
+  if (recurrenceType === 4 && Number.isInteger(bytes[8]) && bytes[8] >= 1) intervalDays = bytes[8] + 1;
   if (recurrenceType === 1 && bytes[13] === 2) {
     weekdayMask = bytes[17] ?? 0;
-    for (let day = 0; day < 7; day++) {
-      if (weekdayMask & (1 << day)) weekdays.push(day);
-    }
+    for (let day = 0; day < 7; day++) if (weekdayMask & (1 << day)) weekdays.push(day);
   }
 
   const timeMinutes = (bytes[3] << 8) | bytes[4];
@@ -76,58 +51,32 @@ function decodeProgramBlock(bytes, dp, index) {
   const validDuration = duration > 0 && duration <= 1440;
 
   return {
-    dp,
-    index,
-    id: bytes[0],
-    enabled: bytes[1] !== 0,
-    recurrenceType,
-    recurrenceValue,
-    intervalDays,
-    weekdayMask,
-    weekdays,
+    dp, index, id: bytes[0], enabled: bytes[1] !== 0,
+    recurrenceType, recurrenceValue, intervalDays, weekdayMask, weekdays,
     timeMinutes: validTime ? timeMinutes : null,
-    time: validTime
-      ? `${String(Math.floor(timeMinutes / 60)).padStart(2, "0")}:${String(timeMinutes % 60).padStart(2, "0")}`
-      : null,
+    time: validTime ? `${String(Math.floor(timeMinutes / 60)).padStart(2, "0")}:${String(timeMinutes % 60).padStart(2, "0")}` : null,
     durationMinutes: validDuration ? duration : null,
-    recurrenceBytes: bytes.slice(7),
-    rawBytes: bytes,
+    recurrenceBytes: bytes.slice(7), rawBytes: bytes,
     rawHex: Buffer.from(bytes).toString("hex").match(/.{1,2}/g)?.join(" ") || "",
   };
 }
 
 function decodeDP(dp, value) {
   if (!value || value === "AA==") return { configured: false, records: [], raw: value || null };
-
   const buffer = Buffer.from(value, "base64");
   const bytes = [...buffer];
   const records = [];
-
   for (let offset = 0; offset + 18 <= bytes.length; offset += 18) {
-    const record = decodeProgramBlock(dp, records.length + 1, bytes.slice(offset, offset + 18));
+    const record = decodeProgramBlock(bytes.slice(offset, offset + 18), dp, records.length + 1);
     if (record) records.push({ ...record, tuyaBlockOffset: offset });
   }
-
-  return {
-    configured: true,
-    recordCount: records.length,
-    records,
-    byteLength: bytes.length,
-    raw: value,
-    hex: buffer.toString("hex").match(/.{1,2}/g)?.join(" ") || "",
-    bytes,
-  };
+  return { configured: true, recordCount: records.length, records, byteLength: bytes.length, raw: value, hex: buffer.toString("hex").match(/.{1,2}/g)?.join(" ") || "", bytes };
 }
 
-// Kept separate because old Tuya timer APIs return several different shapes.
 function flattenLegacyTimers(result) {
   const categories = Array.isArray(result) ? result : result && typeof result === "object" ? [result] : [];
   const timers = [];
-  for (const category of categories) {
-    for (const group of Array.isArray(category?.groups) ? category.groups : []) {
-      for (const timer of Array.isArray(group?.timers) ? group.timers : []) timers.push(timer);
-    }
-  }
+  for (const category of categories) for (const group of Array.isArray(category?.groups) ? category.groups : []) for (const timer of Array.isArray(group?.timers) ? group.timers : []) timers.push(timer);
   return timers;
 }
 
@@ -153,14 +102,7 @@ function attachTimerDates(records, timers) {
   return records.map((record) => {
     const timer = timers.find((item) => timerMatchesRecord(item, record));
     if (!timer) return record;
-    return {
-      ...record,
-      startDate: normalizeTimerDate(timer.date),
-      timerId: timer.timer_id || timer.time_id || null,
-      timerLoops: timer.loops || null,
-      timerTimezone: timer.timezone_id || null,
-      startDateSource: "tuya-device-timer",
-    };
+    return { ...record, startDate: normalizeTimerDate(timer.date), timerId: timer.timer_id || timer.time_id || null, timerLoops: timer.loops || null, timerTimezone: timer.timezone_id || null, startDateSource: "tuya-device-timer" };
   });
 }
 
@@ -171,18 +113,13 @@ async function getTimingLogs(token) {
     `/v2.0/cloud/thing/${DEVICE_ID}/logs?type=10&start_time=${startTime}&end_time=${endTime}&size=100`,
     `/v1.0/devices/${DEVICE_ID}/logs?type=10&start_time=${startTime}&end_time=${endTime}&size=100`,
   ];
-
   for (const path of paths) {
     try {
       const result = await tuyaRequest("GET", path, token);
       if (!result.success) continue;
-      const logs = result.result?.logs;
-      if (Array.isArray(logs)) return logs;
-      const list = result.result?.list;
-      if (Array.isArray(list)) return list;
-    } catch {
-      // Try the next compatible endpoint.
-    }
+      if (Array.isArray(result.result?.logs)) return result.result.logs;
+      if (Array.isArray(result.result?.list)) return result.result.list;
+    } catch {}
   }
   return [];
 }
@@ -191,7 +128,6 @@ async function getWateringHistory(token) {
   const endTime = Date.now();
   const startTime = endTime - 180 * 24 * 60 * 60 * 1000;
   const path = `/v2.0/cloud/thing/${DEVICE_ID}/report-logs?codes=switch,valve_status&start_time=${startTime}&end_time=${endTime}&size=100`;
-
   try {
     const result = await tuyaRequest("GET", path, token);
     if (!result.success || !Array.isArray(result.result?.logs)) return [];
@@ -200,36 +136,30 @@ async function getWateringHistory(token) {
       .map((log) => Number(log.event_time))
       .filter(Number.isFinite)
       .sort((a, b) => b - a);
-  } catch {
-    return [];
-  }
+  } catch { return []; }
+}
+
+function localHourMinute(timestamp) {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: APP_TIME_ZONE, hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(timestamp));
+  return { hour: Number(parts.find((p) => p.type === "hour")?.value), minute: Number(parts.find((p) => p.type === "minute")?.value) };
+}
+
+function localDateKey(timestamp) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(timestamp));
+  return `${parts.find((p) => p.type === "year")?.value}-${parts.find((p) => p.type === "month")?.value}-${parts.find((p) => p.type === "day")?.value}`;
 }
 
 function inferStartDatesFromHistory(records, historyTimes) {
   if (!historyTimes.length) return records;
-
   return records.map((record) => {
     if (record.startDate || !record.intervalDays || !record.time) return record;
-
     const [hours, minutes] = record.time.split(":").map(Number);
     const candidates = historyTimes.filter((timestamp) => {
-      const date = new Date(timestamp);
-      return date.getHours() === hours && date.getMinutes() === minutes;
+      const local = localHourMinute(timestamp);
+      return Math.abs((local.hour * 60 + local.minute) - (hours * 60 + minutes)) <= 2;
     });
-
     if (!candidates.length) return record;
-
-    // Any actual execution at the configured time establishes the phase of
-    // an every-N-days local schedule. We use the latest execution as anchor.
-    const anchor = new Date(candidates[0]);
-    anchor.setHours(0, 0, 0, 0);
-
-    return {
-      ...record,
-      startDate: `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, "0")}-${String(anchor.getDate()).padStart(2, "0")}`,
-      startDateSource: "tuya-watering-history",
-      anchorEventTime: candidates[0],
-    };
+    return { ...record, startDate: localDateKey(candidates[0]), startDateSource: "tuya-watering-history", anchorEventTime: candidates[0] };
   });
 }
 
@@ -240,15 +170,11 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
 
     const token = await getToken();
-    const path = `/v2.0/cloud/thing/${DEVICE_ID}/shadow/properties`;
-    const result = await tuyaRequest("GET", path, token);
-    if (!result.success) {
-      return NextResponse.json({ error: result.msg || "Errore lettura Tuya", tuya: result }, { status: 500 });
-    }
+    const result = await tuyaRequest("GET", `/v2.0/cloud/thing/${DEVICE_ID}/shadow/properties`, token);
+    if (!result.success) return NextResponse.json({ error: result.msg || "Errore lettura Tuya", tuya: result }, { status: 500 });
 
-    const properties = result.result?.properties || [];
     const values = {};
-    for (const item of properties) values[item.code] = item.value;
+    for (const item of result.result?.properties || []) values[item.code] = item.value;
 
     const decoded = {};
     for (const code of PROGRAM_CODES) decoded[code] = decodeDP(code, values[code]);
@@ -258,7 +184,6 @@ export async function GET() {
       const timersResult = await tuyaRequest("GET", `/v2.0/cloud/timer/device/${DEVICE_ID}`, token);
       if (timersResult.success && Array.isArray(timersResult.result)) timers = timersResult.result;
     } catch {}
-
     if (!timers.length) {
       try {
         const legacy = await tuyaRequest("GET", `/v1.0/devices/${DEVICE_ID}/timers`, token);
@@ -271,10 +196,7 @@ export async function GET() {
 
     let records = PROGRAM_CODES.flatMap((code) => attachTimerDates(decoded[code].records, timers));
     records = inferStartDatesFromHistory(records, wateringHistory);
-
-    for (const code of PROGRAM_CODES) {
-      decoded[code].records = records.filter((record) => record.dp === code);
-    }
+    for (const code of PROGRAM_CODES) decoded[code].records = records.filter((record) => record.dp === code);
 
     return NextResponse.json({
       success: true,
@@ -284,24 +206,8 @@ export async function GET() {
       programs: decoded,
       records,
       totalRecords: records.length,
-      timers: timers.map((timer) => ({
-        timerId: timer.timer_id || timer.time_id || null,
-        aliasName: timer.alias_name || null,
-        date: timer.date || null,
-        time: timer.time || null,
-        loops: timer.loops || null,
-        enabled: timer.enable ?? (timer.status === 1),
-        timezoneId: timer.timezone_id || null,
-        functions: timer.functions || [],
-      })),
-      timingLogs: timingLogs.map((log) => ({
-        eventTime: log.event_time || null,
-        code: log.code || null,
-        eventId: log.event_id || null,
-        eventFrom: log.event_from || null,
-        value: log.value ?? log.event_value ?? null,
-        status: log.status || null,
-      })),
+      timers: timers.map((timer) => ({ timerId: timer.timer_id || timer.time_id || null, aliasName: timer.alias_name || null, date: timer.date || null, time: timer.time || null, loops: timer.loops || null, enabled: timer.enable ?? (timer.status === 1), timezoneId: timer.timezone_id || null, functions: timer.functions || [] })),
+      timingLogs: timingLogs.map((log) => ({ eventTime: log.event_time || null, code: log.code || null, eventId: log.event_id || null, eventFrom: log.event_from || null, value: log.value ?? log.event_value ?? null, status: log.status || null })),
       wateringHistoryAnchors: wateringHistory.length,
     });
   } catch (error) {
