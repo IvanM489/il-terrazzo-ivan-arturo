@@ -344,6 +344,34 @@ function attachTimerDates(records, timers) {
   });
 }
 
+function flattenLegacyTimers(result) {
+  if (!Array.isArray(result)) {
+    return [];
+  }
+
+  const timers = [];
+
+  for (const category of result) {
+    const groups =
+      Array.isArray(category?.groups)
+        ? category.groups
+        : [];
+
+    for (const group of groups) {
+      const groupTimers =
+        Array.isArray(group?.timers)
+          ? group.timers
+          : [];
+
+      for (const timer of groupTimers) {
+        timers.push(timer);
+      }
+    }
+  }
+
+  return timers;
+}
+
 export async function GET() {
   try {
     const supabase =
@@ -411,15 +439,14 @@ export async function GET() {
     }
 
     /*
-     * La data di inizio della ricorrenza non è presente
-     * nei 18 byte del DP water_programX. Tuya espone però
-     * i timer reali del dispositivo tramite il Device Timer
-     * API, inclusa la loro data di partenza.
+     * I timer Tuya moderni (/v2.0) non sempre espongono
+     * i programmi proprietari di alcuni controller di
+     * irrigazione. Per questi dispositivi l'app Tuya usa
+     * ancora il servizio timer legacy (/v1.0/devices/.../timers),
+     * che contiene la data reale di partenza del programma.
      *
-     * Questo permette al calendario di seguire automaticamente
-     * i programmi creati/modificati nell'app Tuya, senza date
-     * hardcoded e senza dover registrare manualmente ogni nuovo
-     * programma.
+     * Proviamo entrambi: prima il servizio moderno, poi quello
+     * legacy. Non vengono introdotte date hardcoded.
      */
     let timers = [];
 
@@ -433,18 +460,47 @@ export async function GET() {
 
       if (timersResult.success) {
         timers =
-          timersResult.result || [];
+          Array.isArray(timersResult.result)
+            ? timersResult.result
+            : [];
       } else {
         console.warn(
-          "Tuya Device Timer non disponibile:",
+          "Tuya Device Timer v2 non disponibile:",
           timersResult
         );
       }
     } catch (timerError) {
       console.warn(
-        "Errore lettura Tuya Device Timer:",
+        "Errore lettura Tuya Device Timer v2:",
         timerError
       );
+    }
+
+    if (timers.length === 0) {
+      try {
+        const legacyTimersResult =
+          await tuyaRequest(
+            "GET",
+            `/v1.0/devices/${DEVICE_ID}/timers`,
+            token
+          );
+
+        if (legacyTimersResult.success) {
+          timers = flattenLegacyTimers(
+            legacyTimersResult.result
+          );
+        } else {
+          console.warn(
+            "Tuya Device Timer legacy non disponibile:",
+            legacyTimersResult
+          );
+        }
+      } catch (timerError) {
+        console.warn(
+          "Errore lettura Tuya Device Timer legacy:",
+          timerError
+        );
+      }
     }
 
     const records =
@@ -492,7 +548,8 @@ export async function GET() {
         loops:
           timer.loops || null,
         enabled:
-          timer.enable ?? null,
+          timer.enable ??
+          (timer.status === 1),
         timezoneId:
           timer.timezone_id || null,
         functions:
