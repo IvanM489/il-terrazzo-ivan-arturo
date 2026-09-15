@@ -5,10 +5,10 @@ import { createClient } from "../lib/supabase/client";
 
 const sections = [
   { icon: "🌿", title: "Piante del terrazzo", text: "Gestisci le tue piante", color: "green", href: "/piante" },
-  { icon: "💧", title: "Irrigazione", text: "Controlla le annaffiature", color: "blue", href: "/irrigazione" },
-  { icon: "📅", title: "Calendario", text: "Potatura e concimazione di tutte le piante. Irrigazione piante da interno e bonsai", color: "orange", href: "/calendario" },
   { icon: "🪴", title: "Piante da interno", text: "Gestisci le piante di casa", color: "purple", href: "/piante-interne" },
   { icon: "🌳", title: "Bonsai", text: "Cura e coltiva i tuoi bonsai", color: "pink", href: "/bonsai" },
+  { icon: "💧", title: "Irrigazione", text: "Controlla le annaffiature", color: "blue", href: "/irrigazione" },
+  { icon: "📅", title: "Calendario", text: "Potatura e concimazione di tutte le piante. Irrigazione piante da interno e bonsai", color: "orange", href: "/calendario" },
   { icon: "🔬", title: "Diagnosi AI", text: "Analizza la salute delle tue piante", color: "yellow", href: "/diagnosi-ai" },
 ];
 
