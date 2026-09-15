@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { createClient } from "../../../lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { logActivity } from "../../../lib/activity-log";
 
 function adminClient() {
   return createSupabaseClient(
@@ -17,11 +18,7 @@ function adminClient() {
 
 async function getAuthenticatedUser() {
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   return user;
 }
 
@@ -36,73 +33,41 @@ function normalize(value) {
 function normalizePlantName(value) {
   return normalize(value)
     .replace(/\([^)]*\)/g, "")
-    .replace(/['"’]/g, "")
+    .replace(/[\'"’]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 function findBestPlantMatch(plants, aiPlantName) {
   const target = normalize(aiPlantName);
-  const targetWithoutParentheses =
-    normalizePlantName(aiPlantName);
-
+  const targetWithoutParentheses = normalizePlantName(aiPlantName);
   if (!target) return null;
 
-  // 1. Corrispondenza esatta
-  const exact = plants.find(
-    (plant) => normalize(plant.name) === target
-  );
-
+  const exact = plants.find((plant) => normalize(plant.name) === target);
   if (exact) return exact;
 
-  // 2. Corrispondenza ignorando il contenuto tra parentesi.
-  // Esempio:
-  // "Melo ornamentale (Malus)"
-  // "Melo ornamentale (crabapple)"
-  // diventano entrambi "melo ornamentale".
   const withoutParentheses = plants.find(
-    (plant) =>
-      normalizePlantName(plant.name) ===
-      targetWithoutParentheses
+    (plant) => normalizePlantName(plant.name) === targetWithoutParentheses
   );
-
   if (withoutParentheses) return withoutParentheses;
 
-  // 3. Il nome AI contiene il nome presente nel database
   const contained = plants
     .filter((plant) => {
       const name = normalize(plant.name);
-
-      return (
-        name &&
-        (target.includes(name) ||
-          name.includes(target))
-      );
+      return name && (target.includes(name) || name.includes(target));
     })
-    .sort(
-      (a, b) =>
-        normalize(b.name).length -
-        normalize(a.name).length
-    );
-
+    .sort((a, b) => normalize(b.name).length - normalize(a.name).length);
   if (contained[0]) return contained[0];
 
-  // 4. Ultimo tentativo: confronto sui nomi senza parentesi
   const containedWithoutParentheses = plants
     .filter((plant) => {
       const name = normalizePlantName(plant.name);
-
-      return (
-        name &&
-        (targetWithoutParentheses.includes(name) ||
-          name.includes(targetWithoutParentheses))
+      return name && (
+        targetWithoutParentheses.includes(name) ||
+        name.includes(targetWithoutParentheses)
       );
     })
-    .sort(
-      (a, b) =>
-        normalizePlantName(b.name).length -
-        normalizePlantName(a.name).length
-    );
+    .sort((a, b) => normalizePlantName(b.name).length - normalizePlantName(a.name).length);
 
   return containedWithoutParentheses[0] || null;
 }
@@ -110,50 +75,26 @@ function findBestPlantMatch(plants, aiPlantName) {
 export async function POST(request) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
-
     if (!apiKey) {
-      return Response.json(
-        {
-          error:
-            "Chiave OpenAI non configurata. Controlla OPENAI_API_KEY nel file .env.local.",
-        },
-        { status: 500 }
-      );
+      return Response.json({ error: "Chiave OpenAI non configurata. Controlla OPENAI_API_KEY nel file .env.local." }, { status: 500 });
     }
 
     const user = await getAuthenticatedUser();
-
     if (!user) {
-      return Response.json(
-        {
-          error: "Devi essere autenticato per usare la diagnosi AI.",
-        },
-        { status: 401 }
-      );
+      return Response.json({ error: "Devi essere autenticato per usare la diagnosi AI." }, { status: 401 });
     }
 
     const formData = await request.formData();
     const image = formData.get("image");
-
     if (!image || typeof image === "string") {
-      return Response.json(
-        {
-          error: "Nessuna fotografia ricevuta.",
-        },
-        { status: 400 }
-      );
+      return Response.json({ error: "Nessuna fotografia ricevuta." }, { status: 400 });
     }
 
     const arrayBuffer = await image.arrayBuffer();
-    const base64Image =
-      Buffer.from(arrayBuffer).toString("base64");
-
+    const base64Image = Buffer.from(arrayBuffer).toString("base64");
     const mimeType = image.type || "image/jpeg";
 
-    const client = new OpenAI({
-      apiKey,
-    });
-
+    const client = new OpenAI({ apiKey });
     const response = await client.responses.create({
       model: "gpt-5",
       input: [
@@ -200,13 +141,6 @@ DIAGNOSI_BREVE: [massimo 80 caratteri, molto sintetica]
 AZIONE_BREVE: [COPIA INTEGRALMENTE la sezione 5. COSA FARE ORA della diagnosi completa, mantenendo tutte le righe e tutte le indicazioni]
 CONFIDENZA_PIANTA: [ALTA oppure MEDIA oppure BASSA]
 ---FINE_DATI_NOTA_AI---
-Esempio:
-
----DATI_NOTA_AI---
-PIANTA: Azalea
-DIAGNOSI_BREVE: Cocciniglia
-CONFIDENZA_PIANTA: ALTA
----FINE_DATI_NOTA_AI---
 
 IMPORTANTE:
 - Non inventare dettagli che non sono visibili.
@@ -228,223 +162,80 @@ IMPORTANTE: CONFIDENZA_PIANTA DEVE ESSERE SEMPRE PRESENTE E DEVE ESSERE L'ULTIMA
     });
 
     const diagnosis = response.output_text;
-
     if (!diagnosis) {
-      return Response.json(
-        {
-          error:
-            "OpenAI ha ricevuto la fotografia ma non ha restituito una diagnosi.",
-        },
-        { status: 502 }
-      );
+      return Response.json({ error: "OpenAI ha ricevuto la fotografia ma non ha restituito una diagnosi." }, { status: 502 });
     }
 
-    /*
-     * Estrazione dei dati sintetici dalla risposta AI.
-     */
-    const noteBlockMatch = diagnosis.match(
-      /---DATI_NOTA_AI---([\s\S]*?)---FINE_DATI_NOTA_AI---/
-    );
-
+    const noteBlockMatch = diagnosis.match(/---DATI_NOTA_AI---([\s\S]*?)---FINE_DATI_NOTA_AI---/);
     let plantName = "";
     let diagnosisShort = "";
     let actionShort = "";
     let plantConfidence = "BASSA";
 
-    console.log("🔎 DEBUG DATI NOTA AI:", {
-      plantName,
-      diagnosisShort,
-      plantConfidence,
-      noteBlockFound: !!noteBlockMatch,
-    });
+    if (noteBlockMatch) {
+      const block = noteBlockMatch[1];
+      const plantMatch = block.match(/(?:^|\n)\s*PIANTA:\s*(.*?)(?=\n|$)/i);
+      const diagnosisMatch = block.match(/(?:^|\n)\s*DIAGNOSI_BREVE:\s*(.*?)(?=\n|$)/i);
+      const actionMatch = block.match(/(?:^|\n)\s*AZIONE_BREVE:\s*([\s\S]*?)(?=\n\s*CONFIDENZA_PIANTA\s*:|$)/i);
+      const confidenceMatch = block.match(/(?:^|\n)\s*CONFIDENZA_PIANTA:\s*(ALTA|MEDIA|BASSA)/i);
 
- if (noteBlockMatch) {
-  const block = noteBlockMatch[1];
+      plantName = plantMatch?.[1]?.trim() || "";
+      diagnosisShort = diagnosisMatch?.[1]?.trim() || "";
+      actionShort = actionMatch?.[1]?.trim() || "";
+      plantConfidence = confidenceMatch?.[1]?.trim().toUpperCase() || "BASSA";
+    }
 
-  const plantMatch = block.match(
-    /(?:^|\n)\s*PIANTA:\s*(.*?)(?=\n|$)/i
-  );
-
-  const diagnosisMatch = block.match(
-    /(?:^|\n)\s*DIAGNOSI_BREVE:\s*(.*?)(?=\n|$)/i
-  );
-
-  const actionMatch = block.match(
-    /(?:^|\n)\s*AZIONE_BREVE:\s*([\s\S]*?)(?=\n\s*CONFIDENZA_PIANTA\s*:|$)/i
-  );
-
-  const confidenceMatch = block.match(
-    /(?:^|\n)\s*CONFIDENZA_PIANTA:\s*(ALTA|MEDIA|BASSA)/i
-  );
-
-  plantName =
-    plantMatch?.[1]?.trim() || "";
-
-  diagnosisShort =
-    diagnosisMatch?.[1]?.trim() || "";
-
-  actionShort =
-    actionMatch?.[1]?.trim() || "";
-
-  plantConfidence =
-    confidenceMatch?.[1]?.trim().toUpperCase() || "BASSA";
-
-  console.log(
-    "✅ DEBUG PARSING NOTA:",
-    JSON.stringify({
-      plantName,
-      diagnosisShort,
-      actionLength: actionShort.length,
-      plantConfidence,
-    })
-  );
-}
-    /*
-     * La parte tecnica utilizzata per la nota non viene
-     * mostrata nella diagnosi completa.
-     */
-    const cleanDiagnosis = diagnosis
-      .replace(
-        /---DATI_NOTA_AI---[\s\S]*?---FINE_DATI_NOTA_AI---/i,
-        ""
-      )
-      .trim();
-
+    const cleanDiagnosis = diagnosis.replace(/---DATI_NOTA_AI---[\s\S]*?---FINE_DATI_NOTA_AI---/i, "").trim();
     let noteCreated = false;
     let matchedPlant = null;
 
-    /*
-     * Creazione automatica della nota solo se:
-     * - la pianta è stata identificata
-     * - la confidenza è ALTA o MEDIA
-     * - esiste davvero nel database
-     */
-    if (
-      plantName &&
-      diagnosisShort &&
-      (plantConfidence === "ALTA" ||
-        plantConfidence === "MEDIA")
-    ) {
+    if (plantName && diagnosisShort && (plantConfidence === "ALTA" || plantConfidence === "MEDIA")) {
       const supabase = adminClient();
-
       const tables = [
-        {
-          table: "plants",
-          type: "plants",
-        },
-        {
-          table: "indoor_plants",
-          type: "indoor_plants",
-        },
-        {
-          table: "bonsai",
-          type: "bonsai",
-        },
+        { table: "plants", type: "plants" },
+        { table: "indoor_plants", type: "indoor_plants" },
+        { table: "bonsai", type: "bonsai" },
       ];
-
       const allPlants = [];
 
       for (const item of tables) {
-        const { data, error } = await supabase
-          .from(item.table)
-          .select("id, name");
-
-        if (!error && data) {
-          data.forEach((plant) => {
-            allPlants.push({
-              ...plant,
-              plantType: item.type,
-            });
-          });
-        }
+        const { data, error } = await supabase.from(item.table).select("id, name");
+        if (!error && data) data.forEach((plant) => allPlants.push({ ...plant, plantType: item.type }));
       }
 
-      matchedPlant = findBestPlantMatch(
-        allPlants,
-        plantName
-      );
-
-      console.log(
-        "🌱 DEBUG NOTA COMPLETO:",
-        JSON.stringify({
-          plantName,
-          diagnosisShort,
-          plantConfidence,
-          noteBlockFound: !!noteBlockMatch,
-          databasePlants: allPlants.map((plant) => ({
-            id: plant.id,
-            name: plant.name,
-            plantType: plant.plantType,
-          })),
-          matchedPlant,
-        })
-      );
+      matchedPlant = findBestPlantMatch(allPlants, plantName);
 
       if (matchedPlant) {
         const now = new Date();
+        const date = now.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric" });
+        const noteText = `${date} — Diagnosi AI: ${matchedPlant.name} — ${diagnosisShort}.` + (actionShort ? `\nCosa fare ora: ${actionShort}` : "");
 
-        const date = now.toLocaleDateString("it-IT", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
+        const { error: noteError } = await supabase.from("plant_notes").insert({
+          plant_id: matchedPlant.id,
+          plant_type: matchedPlant.plantType,
+          user_id: user.id,
+          text: noteText,
         });
 
-        const noteText =
-          `${date} — Diagnosi AI: ${matchedPlant.name} — ${diagnosisShort}.` +
-          (actionShort
-            ? `\nCosa fare ora: ${actionShort}`
-            : "");
-
-        const { error: noteError } = await supabase
-          .from("plant_notes")
-          .insert({
-            plant_id: matchedPlant.id,
-            plant_type: matchedPlant.plantType,
-            user_id: user.id,
-            text: noteText,
-          });
-
-        if (!noteError) {
-          noteCreated = true;
-          console.log(
-            "✅ DEBUG NOTA CREATA:",
-            noteText
-          );
-        } else {
-          console.error(
-            "❌ DEBUG ERRORE INSERT NOTA:",
-            noteError
-          );
-          console.error(
-            "Errore creazione nota diagnosi AI:",
-            noteError
-          );
-        }
+        if (!noteError) noteCreated = true;
+        else console.error("Errore creazione nota diagnosi AI:", noteError);
       }
     }
+
+    await logActivity(
+      user.id,
+      "Utilizzo Diagnosi AI",
+      `Pianta: ${matchedPlant?.name || plantName || "non identificata"}${diagnosisShort ? ` — ${diagnosisShort}` : ""}`
+    );
 
     return Response.json({
       diagnosis: cleanDiagnosis,
       noteCreated,
-      matchedPlant: matchedPlant
-        ? {
-            id: matchedPlant.id,
-            name: matchedPlant.name,
-            plantType: matchedPlant.plantType,
-          }
-        : null,
+      matchedPlant: matchedPlant ? { id: matchedPlant.id, name: matchedPlant.name, plantType: matchedPlant.plantType } : null,
       diagnosisShort: diagnosisShort || null,
     });
   } catch (error) {
     console.error("ERRORE DIAGNOSI AI:", error);
-
-    return Response.json(
-      {
-        error:
-          error?.message ||
-          "Si è verificato un errore durante l'analisi della fotografia.",
-      },
-      { status: 500 }
-    );
+    return Response.json({ error: error?.message || "Si è verificato un errore durante l'analisi della fotografia." }, { status: 500 });
   }
 }
