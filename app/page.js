@@ -70,7 +70,14 @@ export default function Home() {
     localStorage.setItem("completedHomeTasks", JSON.stringify(next));
   };
 
-  const logout = async () => { const supabase = createClient(); await supabase.auth.signOut(); window.location.href = "/login"; };
+  const logout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      window.location.href = "/login";
+    }
+  };
+
   const activeTasks = tasks.filter((task) => !completedTasks.includes(task.id));
 
   return (
@@ -82,14 +89,10 @@ export default function Home() {
         </header>
 
         {welcome && <section className="welcome"><div><span className="eyebrow">BENVENUTI A CASA</span><h2>Prendiamoci cura<br />del nostro terrazzo.</h2><p>Tutte le nostre piante, le loro cure,<br />le fotografie e i ricordi in un unico posto.</p></div><div className="welcomePlant">🪴</div></section>}
-
         <section className="today"><div className="todayHeader"><div><span className="eyebrow">OGGI</span><h2>Il terrazzo ha bisogno di te</h2></div><div className="taskCount">{activeTasks.length}<span>{activeTasks.length === 1 ? " attività" : " attività"}</span></div></div></section>
-
         {showTasks && <section className="tasksPanel"><div className="tasksHeader"><div><span className="eyebrow">PROMEMORIA</span><h2>🌱 Cose imminenti da fare</h2><p>Attività consigliate per la stagione:<strong> {stagione}</strong></p></div><button className="closeTasks" onClick={() => setShowTasks(false)} aria-label="Chiudi promemoria">✕</button></div><div className="taskList">{activeTasks.map((task) => <button className="taskCheck" key={task.id} onClick={() => toggleTask(task.id)} aria-label={`Segna come completata: ${task.title}`}><span className="checkbox">☐</span><span className="taskContent"><strong>{task.icon} {task.title}</strong><span>{task.text}</span></span></button>)}{activeTasks.length === 0 && <div className="allDone">✨ Tutto fatto!<span>Nessuna attività da completare.</span></div>}</div></section>}
         {!showTasks && <button className="showTasks" onClick={() => setShowTasks(true)}>🌱 Mostra promemoria</button>}
-
         <section className="cards">{sections.map((section) => <button className={`card ${section.color}`} key={section.title} onClick={() => { if (section.href === "#") { alert(`${section.title}: sezione in costruzione 🌱`); return; } window.location.href = section.href; }}><span className="cardIcon">{section.icon}</span><span className="cardTitle">{section.title}</span><span className="cardText">{section.text}</span><span className="arrow">›</span></button>)}</section>
-
         <section className="quote"><span>🌱</span><p>“Un terrazzo non è solo uno spazio: è qualcosa che cresce insieme a noi.”</p></section>
         <footer><span>Il Terrazzo di Ivan & Arturo</span><span>v0.1 · In sviluppo</span></footer>
       </main>
