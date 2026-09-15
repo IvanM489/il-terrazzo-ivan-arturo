@@ -50,10 +50,14 @@ export async function GET() {
 
   const supabase = createAdminClient();
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, nome, ruolo, created_at")
-    .order("created_at", { ascending: true });
+  const [{ data, error }, { data: authUsers, error: authError }] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, nome, ruolo, created_at")
+        .order("created_at", { ascending: true }),
+      supabase.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+    ]);
 
   if (error) {
     return NextResponse.json(
@@ -62,7 +66,26 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json(data || []);
+  if (authError) {
+    return NextResponse.json(
+      { error: authError.message },
+      { status: 500 }
+    );
+  }
+
+  const emails = new Map(
+    (authUsers?.users || []).map((authUser) => [
+      authUser.id,
+      authUser.email || "",
+    ])
+  );
+
+  return NextResponse.json(
+    (data || []).map((profile) => ({
+      ...profile,
+      email: emails.get(profile.id) || "",
+    }))
+  );
 }
 
 export async function POST(request) {
@@ -165,33 +188,89 @@ export async function PUT(request) {
   }
 
   const body = await request.json();
+  const id = String(body.id || "").trim();
+  const nome = String(body.nome || "").trim();
+  const email = String(body.email || "").trim().toLowerCase();
+  const ruolo = String(body.ruolo || "").trim();
 
-  if (!body.id || !["admin", "user"].includes(body.ruolo)) {
+  if (!id || !nome || !email || !["admin", "user"].includes(ruolo)) {
     return NextResponse.json(
-      { error: "Dati non validi" },
+      { error: "Nome, email, ruolo e ID sono obbligatori." },
       { status: 400 }
     );
   }
 
   const supabase = createAdminClient();
 
+  const { data: currentProfile, error: currentProfileError } =
+    await supabase
+      .from("profiles")
+      .select("id, nome, ruolo")
+      .eq("id", id)
+      .single();
+
+  if (currentProfileError || !currentProfile) {
+    return NextResponse.json(
+      { error: "Utente non trovato." },
+      { status: 404 }
+    );
+  }
+
+  const { data: currentAuthData, error: currentAuthError } =
+    await supabase.auth.admin.getUserById(id);
+
+  if (currentAuthError || !currentAuthData?.user) {
+    return NextResponse.json(
+      { error: "Account utente non trovato." },
+      { status: 404 }
+    );
+  }
+
+  const currentEmail = currentAuthData.user.email || "";
+  const emailChanged = currentEmail.toLowerCase() !== email;
+
+  if (emailChanged) {
+    const { error: authError } = await supabase.auth.admin.updateUserById(
+      id,
+      { email, email_confirm: true }
+    );
+
+    if (authError) {
+      return NextResponse.json(
+        { error: authError.message },
+        { status: 400 }
+      );
+    }
+  }
+
   const { data, error } = await supabase
     .from("profiles")
     .update({
-      ruolo: body.ruolo,
+      nome,
+      ruolo,
     })
-    .eq("id", body.id)
+    .eq("id", id)
     .select()
     .single();
 
   if (error) {
+    if (emailChanged) {
+      await supabase.auth.admin.updateUserById(id, {
+        email: currentEmail,
+        email_confirm: true,
+      });
+    }
+
     return NextResponse.json(
       { error: error.message },
       { status: 500 }
     );
   }
 
-  return NextResponse.json(data);
+  return NextResponse.json({
+    ...data,
+    email,
+  });
 }
 
 export async function DELETE(request) {
