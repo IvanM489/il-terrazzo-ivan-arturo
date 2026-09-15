@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { logActivity } from "../../../../lib/activity-log";
 
 async function checkAdmin() {
   const supabase = await createClient();
@@ -76,7 +77,6 @@ export async function POST(request) {
   }
 
   const body = await request.json();
-
   const supabase = createAdminClient();
 
   const { data, error } = await supabase
@@ -103,6 +103,8 @@ export async function POST(request) {
       { status: 500 }
     );
   }
+
+  await logActivity(user.id, "Inserimento pianta", `Pianta: ${data.name}`);
 
   return NextResponse.json(data);
 }
@@ -154,6 +156,8 @@ export async function PUT(request) {
     );
   }
 
+  await logActivity(user.id, "Modifica pianta", `Pianta: ${data.name}`);
+
   return NextResponse.json(data);
 }
 
@@ -178,7 +182,12 @@ export async function DELETE(request) {
 
   const supabase = createAdminClient();
 
-  // 1. Recupera le fotografie associate alla pianta
+  const { data: plant } = await supabase
+    .from("plants")
+    .select("name")
+    .eq("id", body.id)
+    .single();
+
   const { data: photos, error: photosError } = await supabase
     .from("plant_photos")
     .select("id, storage_path")
@@ -192,7 +201,6 @@ export async function DELETE(request) {
     );
   }
 
-  // 2. Elimina i file fisici dal bucket Storage
   if (photos?.length) {
     const storagePaths = photos
       .map((photo) => photo.storage_path)
@@ -212,7 +220,6 @@ export async function DELETE(request) {
     }
   }
 
-  // 3. Elimina i record delle fotografie
   const { error: deletePhotosError } = await supabase
     .from("plant_photos")
     .delete()
@@ -226,7 +233,6 @@ export async function DELETE(request) {
     );
   }
 
-  // 4. Elimina tutte le note/diario della pianta
   const { error: deleteNotesError } = await supabase
     .from("plant_notes")
     .delete()
@@ -240,7 +246,6 @@ export async function DELETE(request) {
     );
   }
 
-  // 5. Infine elimina la pianta
   const { error: deletePlantError } = await supabase
     .from("plants")
     .delete()
@@ -253,9 +258,9 @@ export async function DELETE(request) {
     );
   }
 
+  await logActivity(user.id, "Cancellazione pianta", `Pianta: ${plant?.name || body.id}`);
+
   return NextResponse.json({
     success: true,
   });
 }
-  
-
