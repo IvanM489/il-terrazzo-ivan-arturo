@@ -84,6 +84,13 @@ export default function AdminPage() {
             title="Gestione utenti"
             text="Aggiungi, modifica ed elimina gli utenti."
           />
+
+          <AdminCard
+            href="/admin/log"
+            icon="📋"
+            title="Log attività"
+            text="Visualizza data, ora, utente e azione effettuata."
+          />
         </section>
       </div>
     </main>
