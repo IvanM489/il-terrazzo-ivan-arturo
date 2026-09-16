@@ -1,10 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 
+const REMEMBER_ME_MAX_AGE = 60 * 60 * 24 * 30;
+
 export async function proxy(request) {
   let response = NextResponse.next({
     request,
   });
+
+  const rememberMe = request.cookies.get("remember_me")?.value === "1";
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -29,7 +33,9 @@ export async function proxy(request) {
               response.cookies.set(
                 name,
                 value,
-                options
+                rememberMe
+                  ? { ...options, maxAge: REMEMBER_ME_MAX_AGE }
+                  : options
               );
             }
           );
