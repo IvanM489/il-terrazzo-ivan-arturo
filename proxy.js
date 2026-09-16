@@ -50,12 +50,14 @@ export async function proxy(request) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Pagine che devono essere sempre accessibili
-  // anche senza autenticazione.
-  if (
-    pathname === "/login" ||
-    pathname === "/recupero-password"
-  ) {
+  // Se esiste già una sessione valida, non mostrare nuovamente
+  // la pagina di login: porta direttamente l'utente alla home.
+  if (pathname === "/login" && user) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  // La pagina di recupero password resta accessibile senza autenticazione.
+  if (pathname === "/recupero-password") {
     return response;
   }
 
