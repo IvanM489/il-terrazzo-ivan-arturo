@@ -1,16 +1,46 @@
 "use client";
 
-import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "../../lib/supabase/client";
 
 function LoginForm() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
   const [errore, setErrore] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    async function checkExistingSession() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (active && user) {
+          const redirect = searchParams.get("redirect") || "/";
+          router.replace(redirect);
+          return;
+        }
+      } catch (error) {
+        console.error("Errore verifica sessione:", error);
+      }
+
+      if (active) setCheckingSession(false);
+    }
+
+    checkExistingSession();
+
+    return () => {
+      active = false;
+    };
+  }, [router, searchParams]);
 
   const login = async (event) => {
     event.preventDefault();
@@ -40,6 +70,14 @@ function LoginForm() {
       setLoading(false);
     }
   };
+
+  if (checkingSession) {
+    return (
+      <main style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f6f1", padding: "24px", fontFamily: "Arial, Helvetica, sans-serif", color: "#55745b" }}>
+        Verifica sessione...
+      </main>
+    );
+  }
 
   return (
     <main style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f6f1", padding: "24px", fontFamily: "Arial, Helvetica, sans-serif" }}>
