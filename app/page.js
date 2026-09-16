@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "../lib/supabase/client";
+import WeatherCard from "./WeatherCard";
 
 const sections = [
   { icon: "🌿", title: "Piante del terrazzo", text: "Gestisci le tue piante", color: "green", href: "/piante" },
@@ -89,6 +90,7 @@ export default function Home() {
         </header>
 
         {welcome && <section className="welcome"><div><span className="eyebrow">BENVENUTI A CASA</span><h2>Prendiamoci cura<br />del nostro terrazzo.</h2><p>Tutte le nostre piante, le loro cure,<br />le fotografie e i ricordi in un unico posto.</p></div><div className="welcomePlant">🪴</div></section>}
+        <WeatherCard />
         <section className="today"><div className="todayHeader"><div><span className="eyebrow">OGGI</span><h2>Il terrazzo ha bisogno di te</h2></div><div className="taskCount">{activeTasks.length}<span>{activeTasks.length === 1 ? " attività" : " attività"}</span></div></div></section>
         {showTasks && <section className="tasksPanel"><div className="tasksHeader"><div><span className="eyebrow">PROMEMORIA</span><h2>🌱 Cose imminenti da fare</h2><p>Attività consigliate per la stagione:<strong> {stagione}</strong></p></div><button className="closeTasks" onClick={() => setShowTasks(false)} aria-label="Chiudi promemoria">✕</button></div><div className="taskList">{activeTasks.map((task) => <button className="taskCheck" key={task.id} onClick={() => toggleTask(task.id)} aria-label={`Segna come completata: ${task.title}`}><span className="checkbox">☐</span><span className="taskContent"><strong>{task.icon} {task.title}</strong><span>{task.text}</span></span></button>)}{activeTasks.length === 0 && <div className="allDone">✨ Tutto fatto!<span>Nessuna attività da completare.</span></div>}</div></section>}
         {!showTasks && <button className="showTasks" onClick={() => setShowTasks(true)}>🌱 Mostra promemoria</button>}
