@@ -8,6 +8,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [errore, setErrore] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -20,7 +21,7 @@ function LoginForm() {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, rememberMe }),
       });
 
       const result = await response.json().catch(() => ({}));
@@ -58,6 +59,16 @@ function LoginForm() {
           <label style={{ color: "#354d3b", fontWeight: "600" }}>
             Password
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" style={inputStyle} />
+          </label>
+
+          <label style={{ display: "flex", alignItems: "center", gap: "9px", color: "#55745b", fontSize: "14px", fontWeight: "600", cursor: "pointer", userSelect: "none", marginTop: "-2px" }}>
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              style={{ width: "17px", height: "17px", accentColor: "#55745b", cursor: "pointer" }}
+            />
+            Ricordami su questo dispositivo
           </label>
 
           <div style={{ textAlign: "right", marginTop: "-5px" }}>
