@@ -1,3 +1,5 @@
+import "./irrigazione-mobile.css";
+
 export const metadata = {
 title: "Il Terrazzo di Ivan & Arturo",
 description: "La nostra app per la gestione del terrazzo",
