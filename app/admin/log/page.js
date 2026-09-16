@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 export default function AdminLogPage() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -11,13 +13,17 @@ export default function AdminLogPage() {
   useEffect(() => {
     async function loadLogs() {
       try {
-        const response = await fetch("/api/admin/logs", { cache: "no-store" });
+        const response = await fetch(`/api/admin/logs?t=${Date.now()}`, {
+          cache: "no-store",
+          credentials: "include",
+          headers: { "Cache-Control": "no-cache" },
+        });
         const result = await response.json();
         if (!response.ok) {
           setError(result.error || "Errore durante il caricamento del log.");
           return;
         }
-        setLogs(result);
+        setLogs(Array.isArray(result) ? result : []);
       } catch {
         setError("Errore durante il caricamento del log.");
       } finally {
