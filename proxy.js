@@ -28,17 +28,15 @@ export async function proxy(request) {
             request,
           });
 
-          cookiesToSet.forEach(
-            ({ name, value, options }) => {
-              response.cookies.set(
-                name,
-                value,
-                rememberMe
-                  ? { ...options, maxAge: REMEMBER_ME_MAX_AGE }
-                  : options
-              );
-            }
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(
+              name,
+              value,
+              rememberMe
+                ? { ...options, maxAge: REMEMBER_ME_MAX_AGE }
+                : options
+            );
+          });
         },
       },
     }
@@ -50,24 +48,14 @@ export async function proxy(request) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Se esiste già una sessione valida, non mostrare nuovamente
-  // la pagina di login: porta direttamente l'utente alla home.
-  if (pathname === "/login" && user) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
-
-  // La pagina di recupero password resta accessibile senza autenticazione.
-  if (pathname === "/recupero-password") {
+  // /login deve poter essere caricata anche con una sessione già attiva.
+  // Il client della pagina login verifica la sessione e porta l'utente alla home.
+  if (pathname === "/login" || pathname === "/recupero-password") {
     return response;
   }
 
-  // Le API gestiscono autonomamente l'autenticazione
-  // e devono restituire JSON invece di essere
-  // reindirizzate alla pagina /login.
   const isApiRoute = pathname.startsWith("/api/");
 
-  // Tutto ciò che non è API richiede autenticazione
-  // tramite redirect alla pagina di login.
   if (!user && !isApiRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
@@ -76,7 +64,6 @@ export async function proxy(request) {
     return NextResponse.redirect(url);
   }
 
-  // Tutta la sezione /admin richiede ruolo admin.
   if (pathname.startsWith("/admin")) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -85,9 +72,7 @@ export async function proxy(request) {
       .single();
 
     if (!profile || profile.ruolo !== "admin") {
-      return NextResponse.redirect(
-        new URL("/", request.url)
-      );
+      return NextResponse.redirect(new URL("/", request.url));
     }
   }
 
