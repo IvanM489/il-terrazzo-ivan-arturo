@@ -3,10 +3,8 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "../../lib/supabase/client";
 
 function LoginForm() {
-  const supabase = createClient();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,26 +16,28 @@ function LoginForm() {
     setLoading(true);
     setErrore("");
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (error) {
-      setErrore(error.message);
-      setLoading(false);
-      return;
-    }
-
     try {
-      await fetch("/api/activity-log", {
+      const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "Login" }),
+        body: JSON.stringify({ email, password }),
       });
-    } catch (logError) {
-      console.error("Errore registrazione login:", logError);
-    }
 
-    const redirect = searchParams.get("redirect") || "/";
-    window.location.href = redirect;
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setErrore(result.error || "Errore durante l'accesso.");
+        setLoading(false);
+        return;
+      }
+
+      const redirect = searchParams.get("redirect") || "/";
+      window.location.href = redirect;
+    } catch (error) {
+      console.error("Errore login:", error);
+      setErrore("Impossibile completare l'accesso. Riprova.");
+      setLoading(false);
+    }
   };
 
   return (
