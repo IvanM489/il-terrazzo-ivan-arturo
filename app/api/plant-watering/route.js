@@ -33,7 +33,7 @@ export async function POST(request) {
     if (!plantId || !ALLOWED_TYPES.includes(plantType)) return NextResponse.json({ error: "Pianta non valida." }, { status: 400 });
     const supabase = createAdminClient(); const wateredAt = body?.wateredAt ? new Date(body.wateredAt) : new Date();
     if (Number.isNaN(wateredAt.getTime())) return NextResponse.json({ error: "Data non valida." }, { status: 400 });
-    const { data, error: insertError } = await supabase.from(TABLE).insert({ plant_id: plantId, plant_type: plantType, watered_at: wateredAt.toISOString() }).select("id, plant_id, plant_type, watered_at").single();
+    const { data, error: insertError } = await supabase.from(TABLE).upsert({ plant_id: plantId, plant_type: plantType, watered_at: wateredAt.toISOString() }, { onConflict: "plant_id,plant_type" }).select("id, plant_id, plant_type, watered_at").single();
     if (insertError) throw insertError;
     const name = await getPlantName(supabase, plantId, plantType);
     await writeAuditLog({ userId: user.id, action: "Irrigazione registrata", details: `${name} — ${wateredAt.toLocaleDateString("it-IT")}`, path: "/api/plant-watering" });
