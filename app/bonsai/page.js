@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "../../lib/supabase/server";
+import { getPlantPhotoIds } from "../../lib/plant-photo-indicators";
 
 export default async function BonsaiPage() {
   const supabase = await createClient();
@@ -9,12 +10,7 @@ export default async function BonsaiPage() {
     .select("*")
     .order("name", { ascending: true });
 
-  const { data: photoRows } = await supabase
-    .from("plant_photos")
-    .select("plant_id")
-    .eq("plant_type", "bonsai"); 
-
-  const plantsWithPhotos = new Set((photoRows || []).map((photo) => String(photo.plant_id)));
+  const plantsWithPhotos = await getPlantPhotoIds(supabase, "bonsai");
 
   return (
     <main className="page">
@@ -50,7 +46,7 @@ export default async function BonsaiPage() {
                 <div>
                   <div className="plant-name-row">
                     <h2>{plant.name}</h2>
-                    {plantsWithPhotos.has(String(plant.id)) && (
+                    {plantsWithPhotos.has(`bonsai:${plant.id}`) && (
                       <span className="photo-indicator" title="foto disponibili" aria-label="foto disponibili">
                         <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M14 4h-4l-2 3H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z" />
