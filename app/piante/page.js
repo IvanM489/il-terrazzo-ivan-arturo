@@ -44,7 +44,21 @@ export default function PlantsPage() {
               <Link key={`${plant.collection}-${plant.id}`} href={`/pianta/${encodeURIComponent(plant.name)}`} style={{ textDecoration: "none", color: "inherit" }}>
                 <article style={{ padding: "24px", borderRadius: "20px", background: "#f5f8f1", border: "1px solid #dfe8d8", height: "100%", boxSizing: "border-box", transition: "transform 0.15s ease" }}>
                   <div style={{ fontSize: "40px" }}>{plant.icon || "🌿"}</div>
-                  <h2 style={{ color: "#354d3b", marginBottom: "8px" }}>{plant.name}</h2>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+                    <h2 style={{ color: "#354d3b", marginBottom: "8px" }}>{plant.name}</h2>
+                    {plant.hasPhotos && (
+                      <span
+                        title="foto disponibili"
+                        aria-label="foto disponibili"
+                        style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#55745b", flexShrink: 0, fontSize: "20px" }}
+                      >
+                        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 4h-4l-2 3H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z" />
+                          <circle cx="12" cy="13" r="3" />
+                        </svg>
+                      </span>
+                    )}
+                  </div>
                   {plant.scientific && <p><em>{plant.scientific}</em></p>}
                   <p><strong>Categoria:</strong> {plant.category || "—"}</p>
                   <p><strong>Esposizione:</strong> {plant.exposure || "—"}</p>

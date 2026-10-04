@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../lib/supabase/server";
+import { getPlantPhotoIds } from "../../../../lib/plant-photo-indicators";
 
 function normalizeSeasons(value) {
   if (Array.isArray(value)) {
@@ -79,6 +80,23 @@ export async function GET() {
       ),
     ];
 
+    // Una sola lettura server-side per identificare le piante con foto.
+    const plantsWithPhotos = await getPlantPhotoIds(supabase);
+
+    const plantsWithPhotoFlags = plants.map((plant) => {
+      const plantType =
+        plant.collection === "Terrazzo"
+          ? "plants"
+          : plant.collection === "Piante da interno"
+            ? "indoor_plants"
+            : "bonsai";
+
+      return {
+        ...plant,
+        hasPhotos: plantsWithPhotos.has(`${plantType}:${plant.id}`),
+      };
+    });
+
     const bonsaiDebug = plants
       .filter(
         (plant) =>
@@ -99,7 +117,7 @@ export async function GET() {
     );
 
     return NextResponse.json({
-      plants,
+      plants: plantsWithPhotoFlags,
 
       counts: {
         terrazzo:

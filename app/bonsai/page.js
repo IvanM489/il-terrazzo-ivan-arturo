@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "../../lib/supabase/server";
+import { getPlantPhotoIds } from "../../lib/plant-photo-indicators";
 
 export default async function BonsaiPage() {
   const supabase = await createClient();
@@ -8,6 +9,8 @@ export default async function BonsaiPage() {
     .from("bonsai")
     .select("*")
     .order("name", { ascending: true });
+
+  const plantsWithPhotos = await getPlantPhotoIds(supabase, "bonsai");
 
   return (
     <main className="page">
@@ -41,7 +44,17 @@ export default async function BonsaiPage() {
                 <div className="icon">{plant.icon || "🌳"}</div>
 
                 <div>
-                  <h2>{plant.name}</h2>
+                  <div className="plant-name-row">
+                    <h2>{plant.name}</h2>
+                    {plantsWithPhotos.has(`bonsai:${plant.id}`) && (
+                      <span className="photo-indicator" title="foto disponibili" aria-label="foto disponibili">
+                        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 4h-4l-2 3H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z" />
+                          <circle cx="12" cy="13" r="3" />
+                        </svg>
+                      </span>
+                    )}
+                  </div>
 
                   {plant.scientific && (
                     <em>{plant.scientific}</em>
@@ -126,9 +139,25 @@ export default async function BonsaiPage() {
           text-align: center;
         }
 
-        h2 {
+        .plant-name-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .plant-name-row h2 {
           margin: 0 0 4px;
           color: #354d3b;
+        }
+
+        .photo-indicator {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          color: #55745b;
+          cursor: help;
         }
 
         em {
