@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../lib/supabase/server";
+import { getPlantPhotoIds } from "../../../../lib/plant-photo-indicators";
 
 function normalizeSeasons(value) {
   if (Array.isArray(value)) {
@@ -79,19 +80,8 @@ export async function GET() {
       ),
     ];
 
-    // Recupera in un'unica query gli identificativi delle piante con foto.
-    // Questa API verifica prima l'autenticazione dell'utente.
-    const { data: photoRows, error: photoError } = await supabase
-      .from("plant_photos")
-      .select("plant_id, plant_type");
-
-    if (photoError) {
-      console.error("Errore nel recupero delle foto delle piante:", photoError);
-    }
-
-    const plantsWithPhotos = new Set(
-      (photoRows || []).map((photo) => `${photo.plant_type}:${photo.plant_id}`)
-    );
+    // Una sola lettura server-side per identificare le piante con foto.
+    const plantsWithPhotos = await getPlantPhotoIds(supabase);
 
     const plantsWithPhotoFlags = plants.map((plant) => {
       const plantType =
