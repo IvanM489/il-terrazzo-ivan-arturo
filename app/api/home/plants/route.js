@@ -79,6 +79,34 @@ export async function GET() {
       ),
     ];
 
+    // Recupera in un'unica query gli identificativi delle piante con foto.
+    // Questa API verifica prima l'autenticazione dell'utente.
+    const { data: photoRows, error: photoError } = await supabase
+      .from("plant_photos")
+      .select("plant_id, plant_type");
+
+    if (photoError) {
+      console.error("Errore nel recupero delle foto delle piante:", photoError);
+    }
+
+    const plantsWithPhotos = new Set(
+      (photoRows || []).map((photo) => `${photo.plant_type}:${photo.plant_id}`)
+    );
+
+    const plantsWithPhotoFlags = plants.map((plant) => {
+      const plantType =
+        plant.collection === "Terrazzo"
+          ? "plants"
+          : plant.collection === "Piante da interno"
+            ? "indoor_plants"
+            : "bonsai";
+
+      return {
+        ...plant,
+        hasPhotos: plantsWithPhotos.has(`${plantType}:${plant.id}`),
+      };
+    });
+
     const bonsaiDebug = plants
       .filter(
         (plant) =>
@@ -99,7 +127,7 @@ export async function GET() {
     );
 
     return NextResponse.json({
-      plants,
+      plants: plantsWithPhotoFlags,
 
       counts: {
         terrazzo:
